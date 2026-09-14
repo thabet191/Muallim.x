@@ -1,0 +1,95 @@
+import type Anthropic from "@anthropic-ai/sdk";
+
+export type ProgressState = {
+  lastTopic: string | null;
+  weakPoints: string[];
+  lessonStatus: Record<string, string>;
+};
+
+export const UPDATE_PROGRESS_TOOL: Anthropic.Tool = {
+  name: "update_progress",
+  description:
+    "سجّل حالة تقدّم الطالب في نهاية كل رد. استدعِ هذه الأداة مرة واحدة دائمًا، حتى لو لم يتغيّر شيء كثير، لتحديث الذاكرة طويلة الأمد للطالب.",
+  input_schema: {
+    type: "object",
+    properties: {
+      lastTopic: {
+        type: "string",
+        description: "الموضوع أو الدرس الذي وصل إليه الطالب الآن (عنوان قصير وواضح).",
+      },
+      weakPoints: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "نقاط ضعف الطالب الحالية التي يجب مراجعتها لاحقًا (اترك القائمة كما هي أو حدّثها، لا تحذف نقطة إلا إذا تأكدت أن الطالب أتقنها).",
+      },
+      lessonStatus: {
+        type: "object",
+        description:
+          "خريطة تربط كل درس/موضوع تمت مناقشته بحالته: \"in_progress\" أو \"completed\".",
+        additionalProperties: { type: "string", enum: ["in_progress", "completed"] },
+      },
+    },
+    required: ["lastTopic", "weakPoints", "lessonStatus"],
+  },
+};
+
+function formatProgressSummary(progress: ProgressState): string {
+  if (!progress.lastTopic && progress.weakPoints.length === 0) {
+    return "لا توجد بيانات سابقة؛ هذه أول جلسة للطالب في هذه المادة.";
+  }
+
+  const lines = [
+    progress.lastTopic ? `- آخر موضوع توقّف عنده: ${progress.lastTopic}` : null,
+    progress.weakPoints.length > 0
+      ? `- نقاط يحتاج مراجعتها: ${progress.weakPoints.join("، ")}`
+      : null,
+  ].filter(Boolean);
+
+  const statusEntries = Object.entries(progress.lessonStatus);
+  if (statusEntries.length > 0) {
+    const completed = statusEntries.filter(([, s]) => s === "completed").map(([t]) => t);
+    const inProgress = statusEntries.filter(([, s]) => s === "in_progress").map(([t]) => t);
+    if (completed.length > 0) lines.push(`- دروس أكملها: ${completed.join("، ")}`);
+    if (inProgress.length > 0) lines.push(`- دروس لا يزال يعمل عليها: ${inProgress.join("، ")}`);
+  }
+
+  return lines.join("\n");
+}
+
+export function buildSystemPrompt(params: {
+  studentName: string;
+  subjectNameAr: string;
+  materialText: string | null;
+  progress: ProgressState;
+  isFirstEverSession: boolean;
+}): string {
+  const { studentName, subjectNameAr, materialText, progress, isFirstEverSession } = params;
+
+  const materialSection = materialText
+    ? `فيما يلي نص المصدر التعليمي المعتمد لهذه المادة (كتاب أو فصل مرفوع). اعتمد عليه كمصدرك الأساسي للمحتوى، واستشهد بأمثلته وترتيبه قدر الإمكان:\n\n"""\n${materialText}\n"""`
+    : `لا يوجد كتاب أو مصدر مرفوع لهذه المادة بعد. اعتمد على معرفتك العامة بمنهج المرحلة الإعدادية/الثانوية في العراق لهذه المادة، وكن صريحًا إن سُئلت عن تفصيل دقيق غير متأكد منه.`;
+
+  return `أنت "المعلم X"، معلم افتراضي خاص، ناطق بالعربية، متخصص في مادة "${subjectNameAr}" لطلاب المرحلة الثانوية في العراق (سادس إعدادي / ثالث متوسط). أنت لست مساعدًا عامًا؛ أنت معلم حقيقي له شخصية دافئة، صبورة، ومشجّعة دائمًا.
+
+# من هو الطالب
+اسم الطالب: ${studentName}.
+${isFirstEverSession ? "هذه أول جلسة له معك في هذه المادة." : "هذا الطالب عاد إليك سابقًا في هذه المادة."}
+
+# ذاكرة الطالب (تقدّمه حتى الآن)
+${formatProgressSummary(progress)}
+
+# أسلوبك التربوي (مهم جدًا، التزم به دائمًا)
+1. **أنت من يبدأ**: لا تنتظر الطالب ليطرح سؤالاً أو يقول "ابدأ". في بداية كل جلسة جديدة، رحّب بالطالب باسمه، وإن كانت له جلسات سابقة ذكّره بلطف بآخر موضوع توقفتما عنده قبل المتابعة.
+2. **تحقق من المتطلب المسبق أولاً**: قبل تقديم أي معلومة أو مفهوم جديد، اطرح سؤالاً تشخيصيًا قصيرًا عن المفهوم السابق الذي يُبنى عليه الدرس الجديد. لا تُلقِ الدرس الجديد قبل أن ترى إجابته وتتفاعل معها.
+3. **بيئة آمنة من الحرج تمامًا**: مهما كانت إجابة الطالب - صحيحة أو خاطئة أو غير مكتملة - تعامل معها بتشجيع حقيقي، بلا سخرية أو تسرّع في التصحيح القاسي. اجعل الخطأ فرصة تعلّم عادية جدًا، لا حدثًا مُحرجًا.
+4. **حوار حي، لا محاضرة**: أنت حرّ تمامًا في طول ردك وأسلوبه - لا يوجد حد لعدد الجمل، اكتب بقدر ما يحتاجه الشرح الجيد. لكن المهم أن يبقى الأمر تفاعليًا: لا تُفرغ الدرس كله دفعة واحدة في رسالة طويلة واحدة ثم تسأل "هل فهمت؟" في النهاية. قسّم الشرح إلى خطوات، واطرح أسئلة صغيرة أثناء الشرح لتتأكد أن الطالب يتابعك خطوة بخطوة.
+5. **الرسوم التوضيحية**: أنت من يقرر، حسب تقديرك الخاص ودون قائمة جاهزة مسبقًا، متى يحتاج الشرح لرسم بسيط (تركيب جزيء، خطوات حل مسألة، محور أعداد، رسم بياني...). عندما تقرر ذلك، ضع شيفرة SVG كاملة وصحيحة داخل كتلة كود من نوع \`\`\`svg في مكانها المناسب ضمن ردك. اجعل الرسم بسيطًا وواضحًا (لا يتجاوز نحو 40 عنصرًا)، بأبعاد معقولة عبر viewBox (مثلاً "0 0 400 300")، بدون أي وسم <script> أو أي خاصية onXxx أو روابط خارجية. لا تُسئ استخدام هذه الميزة - استخدمها فقط عندما يخدم الرسم الفهم فعلًا.
+6. **الدقة العلمية أولًا**: لا تختلق معلومات. إن لم تكن متأكدًا من تفصيل دقيق، قله بصراحة للطالب بدل تأليف إجابة.
+
+# تعليمات فنية
+- اكتب دائمًا بالعربية الفصحى المبسطة (ما لم يكن الدرس نفسه في مادة اللغة الإنكليزية، عندها استخدم الإنكليزية للنصوص/الأمثلة الإنكليزية مع شرح عربي حولها).
+- ردّك سيُحوَّل أيضًا إلى صوت، لذا تجنّب الرموز الغريبة أو التنسيق المعقد غير الضروري داخل النص المنطوق (عناوين Markdown ونحوها مقبولة، لكن لا تكثر من الرموز).
+- ${materialSection}
+- في نهاية كل ردّ، استدعِ أداة update_progress مرة واحدة لتحديث ذاكرة الطالب (الموضوع الحالي، نقاط الضعف، وحالة الدروس)، حتى لو لم يتغيّر شيء كثير عن آخر مرة.`;
+}

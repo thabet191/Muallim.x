@@ -1,0 +1,114 @@
+// Muallim.X — Prisma schema
+// SQLite for local/dev. Swap the datasource provider + DATABASE_URL for
+// Postgres in production (the models below are Postgres-compatible as-is).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(STUDENT)
+  createdAt    DateTime @default(now())
+
+  progress         Progress[]
+  studentMaterials StudentMaterial[]
+  messages         Message[]
+}
+
+/// A subject/book in the library (chemistry, math, english, ...).
+/// Admins can add more over time without touching code.
+model Subject {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  nameAr      String
+  nameEn      String
+  description String?
+  createdAt   DateTime @default(now())
+
+  materials        Material[]
+  studentMaterials StudentMaterial[]
+  progress         Progress[]
+  messages         Message[]
+}
+
+/// Permanent library content for a subject, uploaded once by an admin/teacher
+/// from the admin panel and visible to every student who studies it.
+model Material {
+  id           String   @id @default(cuid())
+  subjectId    String
+  subject      Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title        String
+  fileName     String?
+  sourceText   String
+  pageCount    Int?
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  @@index([subjectId])
+}
+
+/// A student's own uploaded PDF for a subject. Overrides the subject's
+/// default Material for that student only, and persists so they never
+/// have to re-upload it on a later visit.
+model StudentMaterial {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId  String
+  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title      String
+  fileName   String?
+  sourceText String
+  pageCount  Int?
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, subjectId])
+}
+
+/// Per-student, per-subject learning memory: last topic reached, weak
+/// points to revisit, and a status map per lesson — so the teacher can
+/// greet the student by name and continue where they left off.
+model Progress {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId    String
+  subject      Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lastTopic    String?
+  weakPoints   String? // JSON string array
+  lessonStatus String? // JSON object: { [lessonTitle]: "in_progress" | "completed" }
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, subjectId])
+}
+
+/// Capped conversation history per student/subject, used to give the
+/// teacher short-term dialogue context (not just the long-term summary
+/// in Progress).
+model Message {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  role      String // "user" | "assistant"
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([userId, subjectId, createdAt])
+}

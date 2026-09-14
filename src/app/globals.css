@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f5f1;
+  --foreground: #1f2937;
+  --surface: #ffffff;
+  --surface-muted: #f0eee8;
+  --border: #e4e0d8;
+  --brand: #1f7a5c;
+  --brand-dark: #145843;
+  --brand-soft: #e6f2ec;
+  --accent: #c8823a;
+  --danger: #b3413a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-soft: var(--brand-soft);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-tajawal);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #14181a;
+    --foreground: #f2efe9;
+    --surface: #1d2225;
+    --surface-muted: #232830;
+    --border: #2e353a;
+    --brand: #35a87f;
+    --brand-dark: #1f7a5c;
+    --brand-soft: #1c2e28;
+    --accent: #d9a35c;
+    --danger: #e07268;
+  }
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}

@@ -1,0 +1,109 @@
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { extractPdfText, MAX_PDF_BYTES } from "@/lib/extract-pdf-text";
+
+async function requireAdmin() {
+  const session = await auth();
+  if (!session?.user?.id || session.user.role !== "ADMIN") {
+    return null;
+  }
+  return session;
+}
+
+export async function GET(request: Request) {
+  const session = await requireAdmin();
+  if (!session) return new Response("غير مصرّح لك بذلك.", { status: 403 });
+
+  const { searchParams } = new URL(request.url);
+  const subjectId = searchParams.get("subjectId");
+
+  const materials = await prisma.material.findMany({
+    where: subjectId ? { subjectId } : undefined,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      subjectId: true,
+      title: true,
+      fileName: true,
+      pageCount: true,
+      createdAt: true,
+      subject: { select: { nameAr: true } },
+    },
+  });
+
+  return Response.json({ materials });
+}
+
+export async function POST(request: Request) {
+  const session = await requireAdmin();
+  if (!session) return new Response("غير مصرّح لك بذلك.", { status: 403 });
+
+  const formData = await request.formData().catch(() => null);
+  const subjectId = formData?.get("subjectId");
+  const file = formData?.get("file");
+  const title = formData?.get("title");
+
+  if (typeof subjectId !== "string" || !subjectId) {
+    return new Response("subjectId مطلوب.", { status: 400 });
+  }
+  if (!(file instanceof File)) {
+    return new Response("يجب إرفاق ملف PDF.", { status: 400 });
+  }
+  if (file.size > MAX_PDF_BYTES) {
+    return new Response(`حجم الملف يتجاوز الحد المسموح (${MAX_PDF_BYTES / (1024 * 1024)} ميغابايت).`, {
+      status: 400,
+    });
+  }
+
+  const subject = await prisma.subject.findUnique({ where: { id: subjectId } });
+  if (!subject) {
+    return new Response("المادة غير موجودة.", { status: 404 });
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  let extracted: { text: string; pageCount: number };
+  try {
+    extracted = await extractPdfText(buffer);
+  } catch (error) {
+    console.error("pdf extraction failed", error);
+    return new Response("تعذّر قراءة هذا الملف. تأكد أنه PDF سليم غير محمي بكلمة مرور.", {
+      status: 422,
+    });
+  }
+
+  if (!extracted.text) {
+    return new Response("لم نتمكن من استخراج أي نص من هذا الملف.", { status: 422 });
+  }
+
+  const material = await prisma.material.create({
+    data: {
+      subjectId,
+      title: typeof title === "string" && title.trim() ? title.trim() : file.name,
+      fileName: file.name,
+      sourceText: extracted.text,
+      pageCount: extracted.pageCount,
+      uploadedById: session.user.id,
+    },
+  });
+
+  return Response.json({
+    ok: true,
+    id: material.id,
+    title: material.title,
+    pageCount: material.pageCount,
+    characters: extracted.text.length,
+  });
+}
+
+export async function DELETE(request: Request) {
+  const session = await requireAdmin();
+  if (!session) return new Response("غير مصرّح لك بذلك.", { status: 403 });
+
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+  if (!id) return new Response("id مطلوب.", { status: 400 });
+
+  await prisma.material.delete({ where: { id } }).catch(() => null);
+  return Response.json({ ok: true });
+}
