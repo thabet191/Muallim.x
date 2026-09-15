@@ -1,6 +1,7 @@
 // Muallim.X — Prisma schema
-// SQLite for local/dev. Swap the datasource provider + DATABASE_URL for
-// Postgres in production (the models below are Postgres-compatible as-is).
+// Postgres everywhere (local dev and production alike — e.g. a free Neon
+// database) so the same DATABASE_URL shape works in both places and Vercel
+// deploys don't hit SQLite's read-only/ephemeral filesystem problem.
 
 generator client {
   provider = "prisma-client-js"
@@ -8,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

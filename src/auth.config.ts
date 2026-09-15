@@ -6,6 +6,11 @@ import type { NextAuthConfig } from "next-auth";
 export const authConfig: NextAuthConfig = {
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
+  // Vercel (and most Node hosts) terminate TLS in front of the app and pass
+  // a correct Host header through, so it's safe to trust it here — without
+  // this, NextAuth rejects every request outside `next dev` with
+  // "UntrustedHost".
+  trustHost: true,
   providers: [],
   callbacks: {
     jwt: ({ token, user }) => {
