@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { SubjectSummary } from "@/lib/types";
 
 type Material = {
@@ -20,6 +20,11 @@ type Student = {
   createdAt: string;
 };
 
+// Vercel's Hobby plan hard-caps a request body around 4.5MB; warn before
+// that point so a large real textbook fails with a clear reason instead of
+// a confusing silent-looking error.
+const SIZE_WARNING_BYTES = 4 * 1024 * 1024;
+
 export function AdminPanel({
   subjects,
   materials,
@@ -36,9 +41,9 @@ export function AdminPanel({
   const [creatingSubject, setCreatingSubject] = useState(false);
 
   const [uploadSubjectId, setUploadSubjectId] = useState(subjects[0]?.id ?? "");
-  const [uploadTitle, setUploadTitle] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const [uploadNote, setUploadNote] = useState<{ text: string; isError: boolean } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleCreateSubject = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -50,10 +55,11 @@ export function AdminPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newSubject),
     });
+    const data = await response.json().catch(() => null);
 
     setCreatingSubject(false);
     if (!response.ok) {
-      setSubjectError(await response.text());
+      setSubjectError(data?.error ?? "تعذّر إضافة المادة.");
       return;
     }
 
@@ -61,32 +67,36 @@ export function AdminPanel({
     router.refresh();
   };
 
-  const handleUploadMaterial = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const fileInput = event.currentTarget.elements.namedItem("file") as HTMLInputElement;
-    const file = fileInput?.files?.[0];
-    if (!file || !uploadSubjectId) return;
+  const handleUploadMaterial = async (file: File) => {
+    if (!uploadSubjectId) return;
+    setUploadNote(null);
+
+    if (file.size > SIZE_WARNING_BYTES) {
+      setUploadNote({
+        text: `حجم الملف (${(file.size / (1024 * 1024)).toFixed(1)} ميغابايت) كبير وقد يفشل رفعه على هذه الاستضافة. جرّب ضغط الملف بأداة مجانية لتصغير حجمه إلى أقل من 4 ميغابايت ثم أعد المحاولة.`,
+        isError: true,
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     setUploading(true);
-    setUploadNote(null);
 
     const formData = new FormData();
     formData.append("subjectId", uploadSubjectId);
     formData.append("file", file);
-    if (uploadTitle.trim()) formData.append("title", uploadTitle.trim());
 
     const response = await fetch("/api/materials/admin", { method: "POST", body: formData });
     const data = await response.json().catch(() => null);
 
     setUploading(false);
     if (!response.ok) {
-      setUploadNote(typeof data === "string" ? data : "تعذّر رفع الملف.");
+      setUploadNote({ text: data?.error ?? "تعذّر رفع الملف.", isError: true });
       return;
     }
 
-    setUploadNote(`تم حفظ "${data.title}" كمصدر دائم لهذه المادة.`);
-    setUploadTitle("");
-    fileInput.value = "";
+    setUploadNote({ text: `تمت إضافة "${data.title}" إلى مكتبة هذه المادة.`, isError: false });
+    if (fileInputRef.current) fileInputRef.current.value = "";
     router.refresh();
   };
 
@@ -141,50 +151,32 @@ export function AdminPanel({
       </section>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h2 className="mb-3 font-semibold">المصدر الدائم لكل مادة (يظهر لكل الطلاب)</h2>
-        <form onSubmit={handleUploadMaterial} className="mb-4 flex flex-wrap items-center gap-2">
-          <select
-            value={uploadSubjectId}
-            onChange={(e) => setUploadSubjectId(e.target.value)}
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          >
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nameAr}
-              </option>
-            ))}
-          </select>
-          <input
-            placeholder="عنوان (اختياري)"
-            value={uploadTitle}
-            onChange={(e) => setUploadTitle(e.target.value)}
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          />
-          <input name="file" type="file" accept="application/pdf" required className="text-sm" />
-          <button
-            type="submit"
-            disabled={uploading}
-            className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-dark)] disabled:opacity-60"
-          >
-            {uploading ? "جارٍ الرفع..." : "رفع"}
-          </button>
-        </form>
-        {uploadNote && <p className="mb-3 text-sm">{uploadNote}</p>}
+        <h2 className="mb-3 font-semibold">مكتبة المواد (المصدر الدائم الذي يراه كل الطلاب)</h2>
 
-        <div className="flex flex-col divide-y divide-[var(--border)]">
-          {materials.length === 0 && (
-            <p className="py-3 text-sm text-[var(--foreground)]/60">لا توجد مصادر مرفوعة بعد.</p>
+        <label className="mb-1 block text-sm font-medium">المادة</label>
+        <select
+          value={uploadSubjectId}
+          onChange={(e) => setUploadSubjectId(e.target.value)}
+          className="mb-4 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+        >
+          {subjects.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.nameAr}
+            </option>
+          ))}
+        </select>
+
+        <div className="mb-4 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+          {materials.filter((m) => m.subjectId === uploadSubjectId).length === 0 && (
+            <p className="px-3 py-3 text-sm text-[var(--foreground)]/60">
+              لا توجد كتب في مكتبة هذه المادة بعد.
+            </p>
           )}
-          {materials.map((material) => {
-            const subject = subjects.find((s) => s.id === material.subjectId);
-            return (
-              <div key={material.id} className="flex items-center justify-between gap-3 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{material.title}</p>
-                  <p className="text-xs text-[var(--foreground)]/60">
-                    {subject?.nameAr ?? "—"} · {material.pageCount ?? "؟"} صفحة
-                  </p>
-                </div>
+          {materials
+            .filter((m) => m.subjectId === uploadSubjectId)
+            .map((material) => (
+              <div key={material.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="truncate">{material.title}</span>
                 <button
                   onClick={() => handleDeleteMaterial(material.id)}
                   className="shrink-0 text-xs text-[var(--danger)] hover:underline"
@@ -192,9 +184,41 @@ export function AdminPanel({
                   حذف
                 </button>
               </div>
-            );
-          })}
+            ))}
         </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf"
+          disabled={!uploadSubjectId || uploading}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleUploadMaterial(file);
+          }}
+          className="sr-only"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!uploadSubjectId || uploading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--brand)] px-3 py-2 text-sm font-medium text-[var(--brand)] transition hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {uploading ? "جارٍ رفع الملف واستخراج النص..." : "+ ارفع كتابًا جديدًا (PDF)"}
+        </button>
+
+        {uploadNote && (
+          <p
+            role="alert"
+            className={`mt-2 rounded-lg border px-3 py-2 text-sm font-medium leading-6 ${
+              uploadNote.isError
+                ? "border-[var(--danger)] bg-[var(--danger)]/10 text-[var(--danger)]"
+                : "border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-dark)]"
+            }`}
+          >
+            {uploadNote.text}
+          </p>
+        )}
       </section>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">

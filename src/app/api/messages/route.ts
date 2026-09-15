@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
+// Always read fresh from the database — this reflects state that changes
+// on every message/upload and must never be cached.
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {

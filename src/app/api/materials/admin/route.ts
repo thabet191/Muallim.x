@@ -1,10 +1,13 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { extractPdfText, MAX_PDF_BYTES } from "@/lib/extract-pdf-text";
+import { errorResponse } from "@/lib/api-error";
 
 // Large textbooks can take a while to extract text from; the Vercel Hobby
 // plan's default 10s function timeout is too short for that.
 export const maxDuration = 60;
+// This list changes on every upload/delete and must never be cached.
+export const dynamic = "force-dynamic";
 
 async function requireAdmin() {
   const session = await auth();
@@ -16,7 +19,7 @@ async function requireAdmin() {
 
 export async function GET(request: Request) {
   const session = await requireAdmin();
-  if (!session) return new Response("غير مصرّح لك بذلك.", { status: 403 });
+  if (!session) return errorResponse("غير مصرّح لك بذلك.", 403);
 
   const { searchParams } = new URL(request.url);
   const subjectId = searchParams.get("subjectId");
@@ -40,7 +43,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const session = await requireAdmin();
-  if (!session) return new Response("غير مصرّح لك بذلك.", { status: 403 });
+  if (!session) return errorResponse("غير مصرّح لك بذلك.", 403);
 
   const formData = await request.formData().catch(() => null);
   const subjectId = formData?.get("subjectId");
@@ -48,20 +51,21 @@ export async function POST(request: Request) {
   const title = formData?.get("title");
 
   if (typeof subjectId !== "string" || !subjectId) {
-    return new Response("subjectId مطلوب.", { status: 400 });
+    return errorResponse("subjectId مطلوب.", 400);
   }
   if (!(file instanceof File)) {
-    return new Response("يجب إرفاق ملف PDF.", { status: 400 });
+    return errorResponse("يجب إرفاق ملف PDF.", 400);
   }
   if (file.size > MAX_PDF_BYTES) {
-    return new Response(`حجم الملف يتجاوز الحد المسموح (${MAX_PDF_BYTES / (1024 * 1024)} ميغابايت).`, {
-      status: 400,
-    });
+    return errorResponse(
+      `حجم الملف يتجاوز الحد المسموح (${MAX_PDF_BYTES / (1024 * 1024)} ميغابايت).`,
+      400,
+    );
   }
 
   const subject = await prisma.subject.findUnique({ where: { id: subjectId } });
   if (!subject) {
-    return new Response("المادة غير موجودة.", { status: 404 });
+    return errorResponse("المادة غير موجودة.", 404);
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -71,13 +75,11 @@ export async function POST(request: Request) {
     extracted = await extractPdfText(buffer);
   } catch (error) {
     console.error("pdf extraction failed", error);
-    return new Response("تعذّر قراءة هذا الملف. تأكد أنه PDF سليم غير محمي بكلمة مرور.", {
-      status: 422,
-    });
+    return errorResponse("تعذّر قراءة هذا الملف. تأكد أنه PDF سليم غير محمي بكلمة مرور.", 422);
   }
 
   if (!extracted.text) {
-    return new Response("لم نتمكن من استخراج أي نص من هذا الملف.", { status: 422 });
+    return errorResponse("لم نتمكن من استخراج أي نص من هذا الملف.", 422);
   }
 
   const material = await prisma.material.create({
@@ -102,11 +104,11 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   const session = await requireAdmin();
-  if (!session) return new Response("غير مصرّح لك بذلك.", { status: 403 });
+  if (!session) return errorResponse("غير مصرّح لك بذلك.", 403);
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
-  if (!id) return new Response("id مطلوب.", { status: 400 });
+  if (!id) return errorResponse("id مطلوب.", 400);
 
   await prisma.material.delete({ where: { id } }).catch(() => null);
   return Response.json({ ok: true });

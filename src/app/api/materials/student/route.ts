@@ -2,20 +2,23 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { extractPdfText, MAX_PDF_BYTES } from "@/lib/extract-pdf-text";
+import { errorResponse } from "@/lib/api-error";
 
 // Large textbooks can take a while to extract text from; the Vercel Hobby
 // plan's default 10s function timeout is too short for that.
 export const maxDuration = 60;
+// This list changes on every upload/delete and must never be cached.
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
-    return new Response("غير مصرّح لك بذلك.", { status: 401 });
+    return errorResponse("غير مصرّح لك بذلك.", 401);
   }
 
   const subjectId = request.nextUrl.searchParams.get("subjectId");
   if (!subjectId) {
-    return new Response("subjectId مطلوب.", { status: 400 });
+    return errorResponse("subjectId مطلوب.", 400);
   }
 
   const materials = await prisma.studentMaterial.findMany({
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
-    return new Response("غير مصرّح لك بذلك.", { status: 401 });
+    return errorResponse("غير مصرّح لك بذلك.", 401);
   }
 
   const formData = await request.formData().catch(() => null);
@@ -38,23 +41,24 @@ export async function POST(request: Request) {
   const file = formData?.get("file");
 
   if (typeof subjectId !== "string" || !subjectId) {
-    return new Response("subjectId مطلوب.", { status: 400 });
+    return errorResponse("subjectId مطلوب.", 400);
   }
   if (!(file instanceof File)) {
-    return new Response("يجب إرفاق ملف PDF.", { status: 400 });
+    return errorResponse("يجب إرفاق ملف PDF.", 400);
   }
   if (file.type && file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-    return new Response("الملف يجب أن يكون بصيغة PDF.", { status: 400 });
+    return errorResponse("الملف يجب أن يكون بصيغة PDF.", 400);
   }
   if (file.size > MAX_PDF_BYTES) {
-    return new Response(`حجم الملف يتجاوز الحد المسموح (${MAX_PDF_BYTES / (1024 * 1024)} ميغابايت).`, {
-      status: 400,
-    });
+    return errorResponse(
+      `حجم الملف يتجاوز الحد المسموح (${MAX_PDF_BYTES / (1024 * 1024)} ميغابايت).`,
+      400,
+    );
   }
 
   const subject = await prisma.subject.findUnique({ where: { id: subjectId } });
   if (!subject) {
-    return new Response("المادة غير موجودة.", { status: 404 });
+    return errorResponse("المادة غير موجودة.", 404);
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -64,15 +68,14 @@ export async function POST(request: Request) {
     extracted = await extractPdfText(buffer);
   } catch (error) {
     console.error("pdf extraction failed", error);
-    return new Response("تعذّر قراءة هذا الملف. تأكد أنه PDF سليم غير محمي بكلمة مرور.", {
-      status: 422,
-    });
+    return errorResponse("تعذّر قراءة هذا الملف. تأكد أنه PDF سليم غير محمي بكلمة مرور.", 422);
   }
 
   if (!extracted.text) {
-    return new Response("لم نتمكن من استخراج أي نص من هذا الملف (قد يكون صورًا ممسوحة ضوئيًا فقط).", {
-      status: 422,
-    });
+    return errorResponse(
+      "لم نتمكن من استخراج أي نص من هذا الملف (قد يكون صورًا ممسوحة ضوئيًا فقط).",
+      422,
+    );
   }
 
   const userId = session.user.id;
@@ -108,7 +111,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
-    return new Response("غير مصرّح لك بذلك.", { status: 401 });
+    return errorResponse("غير مصرّح لك بذلك.", 401);
   }
 
   const body = await request.json().catch(() => null);
@@ -116,7 +119,7 @@ export async function PATCH(request: Request) {
   const id = typeof body?.id === "string" ? body.id : null;
 
   if (!subjectId) {
-    return new Response("subjectId مطلوب.", { status: 400 });
+    return errorResponse("subjectId مطلوب.", 400);
   }
 
   const userId = session.user.id;
@@ -140,12 +143,12 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
-    return new Response("غير مصرّح لك بذلك.", { status: 401 });
+    return errorResponse("غير مصرّح لك بذلك.", 401);
   }
 
   const id = request.nextUrl.searchParams.get("id");
   if (!id) {
-    return new Response("id مطلوب.", { status: 400 });
+    return errorResponse("id مطلوب.", 400);
   }
 
   await prisma.studentMaterial.deleteMany({

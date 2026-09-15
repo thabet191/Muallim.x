@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { errorResponse } from "@/lib/api-error";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) {
-    return new Response("غير مصرّح لك بذلك.", { status: 401 });
+    return errorResponse("غير مصرّح لك بذلك.", 401);
   }
 
   const subjects = await prisma.subject.findMany({
@@ -32,18 +35,18 @@ const createSubjectSchema = z.object({
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "ADMIN") {
-    return new Response("غير مصرّح لك بذلك.", { status: 403 });
+    return errorResponse("غير مصرّح لك بذلك.", 403);
   }
 
   const body = await request.json().catch(() => null);
   const parsed = createSubjectSchema.safeParse(body);
   if (!parsed.success) {
-    return new Response(parsed.error.issues[0]?.message ?? "بيانات غير صالحة.", { status: 400 });
+    return errorResponse(parsed.error.issues[0]?.message ?? "بيانات غير صالحة.", 400);
   }
 
   const existing = await prisma.subject.findUnique({ where: { key: parsed.data.key } });
   if (existing) {
-    return new Response("هذا المعرّف مستخدم مسبقًا.", { status: 409 });
+    return errorResponse("هذا المعرّف مستخدم مسبقًا.", 409);
   }
 
   const subject = await prisma.subject.create({ data: parsed.data });

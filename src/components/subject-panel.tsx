@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import type { ProgressSummary, StudentMaterialSummary, SubjectSummary } from "@/lib/types";
 
 const DEFAULT_OPTION_VALUE = "__default__";
+// Vercel's Hobby plan hard-caps a request body around 4.5MB; warn before
+// that point so a large real textbook fails with a clear reason instead of
+// a confusing silent-looking error.
+const SIZE_WARNING_BYTES = 4 * 1024 * 1024;
 
 export function SubjectPanel({
   subjects,
@@ -23,7 +27,7 @@ export function SubjectPanel({
   const [materials, setMaterials] = useState<StudentMaterialSummary[]>([]);
   const [uploading, setUploading] = useState(false);
   const [switching, setSwitching] = useState(false);
-  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const [uploadNote, setUploadNote] = useState<{ text: string; isError: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedSubject = subjects.find((s) => s.id === selectedSubjectId) ?? null;
@@ -47,8 +51,18 @@ export function SubjectPanel({
 
   const handleUpload = async (file: File) => {
     if (!selectedSubjectId) return;
-    setUploading(true);
     setUploadNote(null);
+
+    if (file.size > SIZE_WARNING_BYTES) {
+      setUploadNote({
+        text: `حجم الملف (${(file.size / (1024 * 1024)).toFixed(1)} ميغابايت) كبير وقد يفشل رفعه على هذه الاستضافة. جرّب ضغط الملف بأداة مجانية لتصغير حجمه إلى أقل من 4 ميغابايت ثم أعد المحاولة.`,
+        isError: true,
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setUploading(true);
 
     const formData = new FormData();
     formData.append("subjectId", selectedSubjectId);
@@ -59,11 +73,14 @@ export function SubjectPanel({
 
     setUploading(false);
     if (!response.ok) {
-      setUploadNote(typeof data === "string" ? data : "تعذّر رفع الملف، حاول مجددًا.");
+      setUploadNote({ text: data?.error ?? "تعذّر رفع الملف، حاول مجددًا.", isError: true });
       return;
     }
 
-    setUploadNote(`تمت إضافة "${data.title}" (${data.pageCount ?? "؟"} صفحة) إلى مكتبتك.`);
+    setUploadNote({
+      text: `تمت إضافة "${data.title}" (${data.pageCount ?? "؟"} صفحة) إلى مكتبتك.`,
+      isError: false,
+    });
     onMaterialChange();
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -198,7 +215,18 @@ export function SubjectPanel({
           {uploading ? "جارٍ رفع الملف واستخراج النص..." : "+ ارفع كتابًا جديدًا (PDF)"}
         </button>
 
-        {uploadNote && <p className="mt-2 text-xs">{uploadNote}</p>}
+        {uploadNote && (
+          <p
+            role="alert"
+            className={`mt-2 rounded-lg border px-3 py-2 text-xs font-medium leading-6 ${
+              uploadNote.isError
+                ? "border-[var(--danger)] bg-[var(--danger)]/10 text-[var(--danger)]"
+                : "border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-dark)]"
+            }`}
+          >
+            {uploadNote.text}
+          </p>
+        )}
       </div>
     </aside>
   );
