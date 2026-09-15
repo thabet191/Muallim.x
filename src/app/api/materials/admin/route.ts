@@ -2,6 +2,10 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { extractPdfText, MAX_PDF_BYTES } from "@/lib/extract-pdf-text";
 
+// Large textbooks can take a while to extract text from; the Vercel Hobby
+// plan's default 10s function timeout is too short for that.
+export const maxDuration = 60;
+
 async function requireAdmin() {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "ADMIN") {

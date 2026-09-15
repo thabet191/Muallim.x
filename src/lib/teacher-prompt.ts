@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 export type ProgressState = {
   lastTopic: string | null;
+  currentLocation: string | null;
   weakPoints: string[];
   lessonStatus: Record<string, string>;
 };
@@ -17,6 +18,11 @@ export const UPDATE_PROGRESS_TOOL: Anthropic.Tool = {
         type: "string",
         description: "الموضوع أو الدرس الذي وصل إليه الطالب الآن (عنوان قصير وواضح).",
       },
+      currentLocation: {
+        type: "string",
+        description:
+          "موقع الطالب الحالي داخل الكتاب/المصدر، بصيغة قصيرة وواضحة تُعرض له مباشرة، مثل \"الفصل السادس - صفحة 42\". إن كان النص المصدر يحتوي علامات \"[صفحة N]\"، استخدم رقم الصفحة الفعلي منها. إن لم يوجد كتاب مصدر، اكتب اسم الموضوع الحالي فقط.",
+      },
       weakPoints: {
         type: "array",
         items: { type: "string" },
@@ -30,7 +36,7 @@ export const UPDATE_PROGRESS_TOOL: Anthropic.Tool = {
         additionalProperties: { type: "string", enum: ["in_progress", "completed"] },
       },
     },
-    required: ["lastTopic", "weakPoints", "lessonStatus"],
+    required: ["lastTopic", "currentLocation", "weakPoints", "lessonStatus"],
   },
 };
 
@@ -41,6 +47,7 @@ function formatProgressSummary(progress: ProgressState): string {
 
   const lines = [
     progress.lastTopic ? `- آخر موضوع توقّف عنده: ${progress.lastTopic}` : null,
+    progress.currentLocation ? `- آخر موقع في الكتاب: ${progress.currentLocation}` : null,
     progress.weakPoints.length > 0
       ? `- نقاط يحتاج مراجعتها: ${progress.weakPoints.join("، ")}`
       : null,
@@ -67,7 +74,7 @@ export function buildSystemPrompt(params: {
   const { studentName, subjectNameAr, materialText, progress, isFirstEverSession } = params;
 
   const materialSection = materialText
-    ? `فيما يلي نص المصدر التعليمي المعتمد لهذه المادة (كتاب أو فصل مرفوع). اعتمد عليه كمصدرك الأساسي للمحتوى، واستشهد بأمثلته وترتيبه قدر الإمكان:\n\n"""\n${materialText}\n"""`
+    ? `فيما يلي نص المصدر التعليمي المعتمد لهذه المادة (كتاب أو فصل مرفوع). اعتمد عليه كمصدرك الأساسي للمحتوى، واستشهد بأمثلته وترتيبه قدر الإمكان. النص مقسّم بعلامات من نوع "[صفحة N]" تفصل صفحات الكتاب الحقيقية — استخدم هذه الأرقام لإخبار الطالب بالصفحة التي تشرح منها الآن (اذكرها بجملة عادية ضمن كلامك، مثل "نحن الآن في صفحة 42")، وضعها في حقل currentLocation عند تحديث التقدّم:\n\n"""\n${materialText}\n"""`
     : `لا يوجد كتاب أو مصدر مرفوع لهذه المادة بعد. اعتمد على معرفتك العامة بمنهج المرحلة الإعدادية/الثانوية في العراق لهذه المادة، وكن صريحًا إن سُئلت عن تفصيل دقيق غير متأكد منه.`;
 
   return `أنت "المعلم X"، معلم افتراضي خاص، ناطق بالعربية، متخصص في مادة "${subjectNameAr}" لطلاب المرحلة الثانوية في العراق (سادس إعدادي / ثالث متوسط). أنت لست مساعدًا عامًا؛ أنت معلم حقيقي له شخصية دافئة، صبورة، ومشجّعة دائمًا.
@@ -91,5 +98,5 @@ ${formatProgressSummary(progress)}
 - اكتب دائمًا بالعربية الفصحى المبسطة (ما لم يكن الدرس نفسه في مادة اللغة الإنكليزية، عندها استخدم الإنكليزية للنصوص/الأمثلة الإنكليزية مع شرح عربي حولها).
 - ردّك سيُحوَّل أيضًا إلى صوت، لذا تجنّب الرموز الغريبة أو التنسيق المعقد غير الضروري داخل النص المنطوق (عناوين Markdown ونحوها مقبولة، لكن لا تكثر من الرموز).
 - ${materialSection}
-- في نهاية كل ردّ، استدعِ أداة update_progress مرة واحدة لتحديث ذاكرة الطالب (الموضوع الحالي، نقاط الضعف، وحالة الدروس)، حتى لو لم يتغيّر شيء كثير عن آخر مرة.`;
+- في نهاية كل ردّ، استدعِ أداة update_progress مرة واحدة لتحديث ذاكرة الطالب (الموضوع الحالي، موقعه في الكتاب، نقاط الضعف، وحالة الدروس)، حتى لو لم يتغيّر شيء كثير عن آخر مرة.`;
 }

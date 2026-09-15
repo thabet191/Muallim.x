@@ -1,6 +1,31 @@
+import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { extractPdfText, MAX_PDF_BYTES } from "@/lib/extract-pdf-text";
+
+// Large textbooks can take a while to extract text from; the Vercel Hobby
+// plan's default 10s function timeout is too short for that.
+export const maxDuration = 60;
+
+export async function GET(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return new Response("غير مصرّح لك بذلك.", { status: 401 });
+  }
+
+  const subjectId = request.nextUrl.searchParams.get("subjectId");
+  if (!subjectId) {
+    return new Response("subjectId مطلوب.", { status: 400 });
+  }
+
+  const materials = await prisma.studentMaterial.findMany({
+    where: { userId: session.user.id, subjectId },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, title: true, fileName: true, pageCount: true, isActive: true, createdAt: true },
+  });
+
+  return Response.json({ materials });
+}
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -50,46 +75,81 @@ export async function POST(request: Request) {
     });
   }
 
-  const studentMaterial = await prisma.studentMaterial.upsert({
-    where: { userId_subjectId: { userId: session.user.id, subjectId } },
-    create: {
-      userId: session.user.id,
-      subjectId,
-      title: file.name,
-      fileName: file.name,
-      sourceText: extracted.text,
-      pageCount: extracted.pageCount,
-    },
-    update: {
-      title: file.name,
-      fileName: file.name,
-      sourceText: extracted.text,
-      pageCount: extracted.pageCount,
-    },
+  const userId = session.user.id;
+
+  const studentMaterial = await prisma.$transaction(async (tx) => {
+    await tx.studentMaterial.updateMany({
+      where: { userId, subjectId },
+      data: { isActive: false },
+    });
+    return tx.studentMaterial.create({
+      data: {
+        userId,
+        subjectId,
+        title: file.name,
+        fileName: file.name,
+        sourceText: extracted.text,
+        pageCount: extracted.pageCount,
+        isActive: true,
+      },
+    });
   });
 
   return Response.json({
     ok: true,
+    id: studentMaterial.id,
     title: studentMaterial.title,
     pageCount: studentMaterial.pageCount,
     characters: extracted.text.length,
   });
 }
 
-export async function DELETE(request: Request) {
+/** Switches which uploaded book is active for a subject, or clears back to the subject's default content when id is null. */
+export async function PATCH(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return new Response("غير مصرّح لك بذلك.", { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const subjectId = searchParams.get("subjectId");
+  const body = await request.json().catch(() => null);
+  const subjectId = typeof body?.subjectId === "string" ? body.subjectId : null;
+  const id = typeof body?.id === "string" ? body.id : null;
+
   if (!subjectId) {
     return new Response("subjectId مطلوب.", { status: 400 });
   }
 
+  const userId = session.user.id;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.studentMaterial.updateMany({
+      where: { userId, subjectId },
+      data: { isActive: false },
+    });
+    if (id) {
+      await tx.studentMaterial.updateMany({
+        where: { id, userId, subjectId },
+        data: { isActive: true },
+      });
+    }
+  });
+
+  return Response.json({ ok: true });
+}
+
+export async function DELETE(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return new Response("غير مصرّح لك بذلك.", { status: 401 });
+  }
+
+  const id = request.nextUrl.searchParams.get("id");
+  if (!id) {
+    return new Response("id مطلوب.", { status: 400 });
+  }
+
   await prisma.studentMaterial.deleteMany({
-    where: { userId: session.user.id, subjectId },
+    where: { id, userId: session.user.id },
   });
 
   return Response.json({ ok: true });

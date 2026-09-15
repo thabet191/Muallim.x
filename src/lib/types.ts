@@ -14,6 +14,16 @@ export type ChatMessage = {
 
 export type ProgressSummary = {
   lastTopic: string | null;
+  currentLocation: string | null;
   weakPoints: string[];
   lessonStatus: Record<string, string>;
+};
+
+export type StudentMaterialSummary = {
+  id: string;
+  title: string;
+  fileName: string | null;
+  pageCount: number | null;
+  isActive: boolean;
+  createdAt: string;
 };

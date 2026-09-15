@@ -65,7 +65,10 @@ model Material {
 
 /// A student's own uploaded PDF for a subject. Overrides the subject's
 /// default Material for that student only, and persists so they never
-/// have to re-upload it on a later visit.
+/// have to re-upload it on a later visit. A student can keep several
+/// books per subject (a small library); `isActive` marks the one
+/// currently used for lessons — at most one per (userId, subjectId) in
+/// practice, enforced in application code when activating a book.
 model StudentMaterial {
   id         String   @id @default(cuid())
   userId     String
@@ -76,24 +79,26 @@ model StudentMaterial {
   fileName   String?
   sourceText String
   pageCount  Int?
+  isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
 
-  @@unique([userId, subjectId])
+  @@index([userId, subjectId])
 }
 
 /// Per-student, per-subject learning memory: last topic reached, weak
 /// points to revisit, and a status map per lesson — so the teacher can
 /// greet the student by name and continue where they left off.
 model Progress {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subjectId    String
-  subject      Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  lastTopic    String?
-  weakPoints   String? // JSON string array
-  lessonStatus String? // JSON object: { [lessonTitle]: "in_progress" | "completed" }
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId       String
+  subject         Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lastTopic       String?
+  currentLocation String? // human-readable spot in the book, e.g. "الفصل السادس - صفحة 42"
+  weakPoints      String? // JSON string array
+  lessonStatus    String? // JSON object: { [lessonTitle]: "in_progress" | "completed" }
+  updatedAt       DateTime @updatedAt
 
   @@unique([userId, subjectId])
 }

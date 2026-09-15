@@ -5,6 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { anthropic, TEACHER_MODEL } from "@/lib/anthropic";
 import { buildSystemPrompt, UPDATE_PROGRESS_TOOL, type ProgressState } from "@/lib/teacher-prompt";
 
+// Vercel's default serverless function timeout (10s on the Hobby plan) is
+// too short for a full streamed teacher reply; raise it explicitly. 60s is
+// the max the Hobby plan allows and is available on every paid plan too.
+export const maxDuration = 60;
+
 const MAX_MATERIAL_CHARS = 60_000;
 const MAX_HISTORY_MESSAGES = 24;
 const MAX_MESSAGE_LENGTH = 4_000;
@@ -35,7 +40,7 @@ export async function POST(request: NextRequest) {
     prisma.subject.findUnique({ where: { id: subjectId } }),
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.progress.findUnique({ where: { userId_subjectId: { userId, subjectId } } }),
-    prisma.studentMaterial.findUnique({ where: { userId_subjectId: { userId, subjectId } } }),
+    prisma.studentMaterial.findFirst({ where: { userId, subjectId, isActive: true } }),
   ]);
 
   if (!subject || !user) {
@@ -63,6 +68,7 @@ export async function POST(request: NextRequest) {
 
   const progress: ProgressState = {
     lastTopic: progressRow?.lastTopic ?? null,
+    currentLocation: progressRow?.currentLocation ?? null,
     weakPoints: progressRow?.weakPoints ? JSON.parse(progressRow.weakPoints) : [],
     lessonStatus: progressRow?.lessonStatus ? JSON.parse(progressRow.lessonStatus) : {},
   };
@@ -102,29 +108,51 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let fullText = "";
+      let finalMessage: Anthropic.Message | null = null;
+
+      const anthropicStream = anthropic.messages.stream({
+        model: TEACHER_MODEL,
+        max_tokens: 2048,
+        system: systemPrompt,
+        tools: [UPDATE_PROGRESS_TOOL],
+        messages: anthropicMessages,
+      });
+
+      // If the student hits "stop" and the client aborts the fetch, cancel
+      // the upstream call too instead of paying for tokens nobody reads.
+      const onClientAbort = () => anthropicStream.abort();
+      request.signal.addEventListener("abort", onClientAbort);
+
+      anthropicStream.on("text", (delta) => {
+        fullText += delta;
+        controller.enqueue(encoder.encode(delta));
+      });
+
       try {
-        const anthropicStream = anthropic.messages.stream({
-          model: TEACHER_MODEL,
-          max_tokens: 2048,
-          system: systemPrompt,
-          tools: [UPDATE_PROGRESS_TOOL],
-          messages: anthropicMessages,
-        });
+        finalMessage = await anthropicStream.finalMessage();
+      } catch (error) {
+        console.error("chat stream error", error);
+        if (fullText.length === 0) {
+          controller.enqueue(
+            encoder.encode("عذرًا، حدث خطأ أثناء الاتصال بالمعلم. حاول مرة أخرى بعد قليل."),
+          );
+        }
+      } finally {
+        request.signal.removeEventListener("abort", onClientAbort);
+      }
 
-        anthropicStream.on("text", (delta) => {
-          fullText += delta;
-          controller.enqueue(encoder.encode(delta));
-        });
-
-        const finalMessage = await anthropicStream.finalMessage();
-
+      try {
+        // Persist whatever text streamed even if the call was interrupted
+        // (stopped by the student) or errored partway — otherwise the next
+        // turn's history ends on a dangling user message and breaks the
+        // strict user/assistant alternation the API requires.
         if (fullText.trim().length > 0) {
           await prisma.message.create({
             data: { userId, subjectId, role: "assistant", content: fullText },
           });
         }
 
-        const toolUse = finalMessage.content.find(
+        const toolUse = finalMessage?.content.find(
           (block): block is Anthropic.ToolUseBlock =>
             block.type === "tool_use" && block.name === "update_progress",
         );
@@ -132,6 +160,7 @@ export async function POST(request: NextRequest) {
         if (toolUse && toolUse.input && typeof toolUse.input === "object") {
           const input = toolUse.input as {
             lastTopic?: string;
+            currentLocation?: string;
             weakPoints?: string[];
             lessonStatus?: Record<string, string>;
           };
@@ -142,23 +171,20 @@ export async function POST(request: NextRequest) {
               userId,
               subjectId,
               lastTopic: input.lastTopic ?? null,
+              currentLocation: input.currentLocation ?? null,
               weakPoints: JSON.stringify(input.weakPoints ?? []),
               lessonStatus: JSON.stringify(input.lessonStatus ?? {}),
             },
             update: {
               lastTopic: input.lastTopic ?? progress.lastTopic,
+              currentLocation: input.currentLocation ?? progress.currentLocation,
               weakPoints: JSON.stringify(input.weakPoints ?? progress.weakPoints),
               lessonStatus: JSON.stringify(input.lessonStatus ?? progress.lessonStatus),
             },
           });
         }
       } catch (error) {
-        console.error("chat stream error", error);
-        if (fullText.length === 0) {
-          controller.enqueue(
-            encoder.encode("عذرًا، حدث خطأ أثناء الاتصال بالمعلم. حاول مرة أخرى بعد قليل."),
-          );
-        }
+        console.error("chat post-stream persistence error", error);
       } finally {
         controller.close();
       }

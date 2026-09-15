@@ -13,19 +13,11 @@ export async function GET(request: NextRequest) {
     return new Response("subjectId مطلوب.", { status: 400 });
   }
 
-  const userId = session.user.id;
+  const messages = await prisma.message.findMany({
+    where: { userId: session.user.id, subjectId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, role: true, content: true, createdAt: true },
+  });
 
-  const [messages, studentMaterial] = await Promise.all([
-    prisma.message.findMany({
-      where: { userId, subjectId },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, role: true, content: true, createdAt: true },
-    }),
-    prisma.studentMaterial.findUnique({
-      where: { userId_subjectId: { userId, subjectId } },
-      select: { title: true, fileName: true, createdAt: true },
-    }),
-  ]);
-
-  return Response.json({ messages, studentMaterial });
+  return Response.json({ messages });
 }

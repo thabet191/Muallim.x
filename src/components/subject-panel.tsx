@@ -1,28 +1,49 @@
 "use client";
 
-import { useRef, useState } from "react";
-import type { ProgressSummary, SubjectSummary } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import type { ProgressSummary, StudentMaterialSummary, SubjectSummary } from "@/lib/types";
+
+const DEFAULT_OPTION_VALUE = "__default__";
 
 export function SubjectPanel({
   subjects,
   selectedSubjectId,
   onSelectSubject,
   progress,
-  studentMaterial,
+  materialsVersion,
   onMaterialChange,
 }: {
   subjects: SubjectSummary[];
   selectedSubjectId: string | null;
   onSelectSubject: (id: string) => void;
   progress: ProgressSummary | null;
-  studentMaterial: { title: string; fileName: string | null } | null;
+  materialsVersion: number;
   onMaterialChange: () => void;
 }) {
+  const [materials, setMaterials] = useState<StudentMaterialSummary[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedSubject = subjects.find((s) => s.id === selectedSubjectId) ?? null;
+  const activeMaterial = materials.find((m) => m.isActive) ?? null;
+
+  useEffect(() => {
+    if (!selectedSubjectId) return;
+    let cancelled = false;
+    fetch(`/api/materials/student?subjectId=${selectedSubjectId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setMaterials(data?.materials ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setMaterials([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSubjectId, materialsVersion]);
 
   const handleUpload = async (file: File) => {
     if (!selectedSubjectId) return;
@@ -42,15 +63,25 @@ export function SubjectPanel({
       return;
     }
 
-    setUploadNote(`تم رفع "${data.title}" (${data.pageCount ?? "؟"} صفحة) بنجاح.`);
+    setUploadNote(`تمت إضافة "${data.title}" (${data.pageCount ?? "؟"} صفحة) إلى مكتبتك.`);
     onMaterialChange();
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleRemoveMaterial = async () => {
+  const handleActivate = async (id: string | null) => {
     if (!selectedSubjectId) return;
-    await fetch(`/api/materials/student?subjectId=${selectedSubjectId}`, { method: "DELETE" });
-    setUploadNote(null);
+    setSwitching(true);
+    await fetch("/api/materials/student", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subjectId: selectedSubjectId, id }),
+    });
+    setSwitching(false);
+    onMaterialChange();
+  };
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/materials/student?id=${id}`, { method: "DELETE" });
     onMaterialChange();
   };
 
@@ -77,8 +108,14 @@ export function SubjectPanel({
         )}
       </div>
 
-      {progress && (progress.lastTopic || progress.weakPoints.length > 0) && (
+      {progress && (progress.lastTopic || progress.currentLocation || progress.weakPoints.length > 0) && (
         <div className="rounded-lg bg-[var(--brand-soft)] p-3 text-xs leading-6">
+          {progress.currentLocation && (
+            <p>
+              <span className="font-medium">موقعك في الكتاب: </span>
+              {progress.currentLocation}
+            </p>
+          )}
           {progress.lastTopic && (
             <p>
               <span className="font-medium">آخر موضوع: </span>
@@ -95,23 +132,52 @@ export function SubjectPanel({
       )}
 
       <div>
-        <label className="mb-1 block text-sm font-medium">كتابك الخاص (PDF)</label>
+        <label className="mb-1 block text-sm font-medium">مكتبة كتبك (PDF)</label>
         <p className="mb-2 text-xs text-[var(--foreground)]/60">
-          ارفع ملف PDF ليحل محل المحتوى الافتراضي لهذه المادة. يُحفظ تلقائيًا ولا تحتاج لرفعه مرة أخرى.
+          ارفع كتبًا بصيغة PDF لهذه المادة، واختر أي واحد منها ليكون مصدر شرح المعلم. تُحفظ كتبك تلقائيًا ولا تحتاج لرفعها مرة أخرى.
         </p>
 
-        {studentMaterial ? (
-          <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs">
-            <span className="truncate">{studentMaterial.title}</span>
-            <button
-              onClick={handleRemoveMaterial}
-              className="shrink-0 text-[var(--danger)] hover:underline"
-            >
-              إزالة
-            </button>
-          </div>
-        ) : null}
+        <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">
+          اختر الكتاب الذي تريد دراسته
+        </label>
+        <select
+          value={activeMaterial?.id ?? DEFAULT_OPTION_VALUE}
+          disabled={!selectedSubjectId || switching}
+          onChange={(e) =>
+            handleActivate(e.target.value === DEFAULT_OPTION_VALUE ? null : e.target.value)
+          }
+          className="mb-3 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--brand)] disabled:opacity-60"
+        >
+          <option value={DEFAULT_OPTION_VALUE}>المحتوى الافتراضي للمادة</option>
+          {materials.map((material) => (
+            <option key={material.id} value={material.id}>
+              {material.title}
+            </option>
+          ))}
+        </select>
 
+        {materials.length > 0 && (
+          <div className="mb-3 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+            {materials.map((material) => (
+              <div key={material.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                <span className="truncate">
+                  {material.isActive && "✓ "}
+                  {material.title}
+                </span>
+                <button
+                  onClick={() => handleDelete(material.id)}
+                  className="shrink-0 text-[var(--danger)] hover:underline"
+                >
+                  حذف
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Native file input kept for real functionality, visually hidden —
+            its own "Choose File" button follows OS/browser locale (usually
+            English) which looked broken inside an all-Arabic app. */}
         <input
           ref={fileInputRef}
           type="file"
@@ -121,9 +187,17 @@ export function SubjectPanel({
             const file = e.target.files?.[0];
             if (file) handleUpload(file);
           }}
-          className="block w-full text-xs file:me-2 file:rounded-md file:border-0 file:bg-[var(--brand)] file:px-3 file:py-1.5 file:text-white hover:file:bg-[var(--brand-dark)]"
+          className="sr-only"
         />
-        {uploading && <p className="mt-2 text-xs text-[var(--foreground)]/60">جارٍ رفع الملف واستخراج النص...</p>}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!selectedSubjectId || uploading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--brand)] px-3 py-2 text-sm font-medium text-[var(--brand)] transition hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {uploading ? "جارٍ رفع الملف واستخراج النص..." : "+ ارفع كتابًا جديدًا (PDF)"}
+        </button>
+
         {uploadNote && <p className="mt-2 text-xs">{uploadNote}</p>}
       </div>
     </aside>
