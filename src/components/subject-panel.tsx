@@ -120,6 +120,15 @@ export function SubjectPanel({
     }
   };
 
+  // Tapping a book in the list is the obvious "open this" gesture — do both
+  // steps (activate it, then have the teacher start from it) in one tap
+  // instead of leaving the student to find the separate activate control
+  // and the separate start button on their own.
+  const handleOpenMaterial = async (id: string | null) => {
+    await handleActivate(id);
+    onStartLesson?.();
+  };
+
   const handleDelete = async (id: string) => {
     await fetch(`/api/materials/student?id=${id}`, { method: "DELETE" });
     onMaterialChange();
@@ -211,14 +220,20 @@ export function SubjectPanel({
         {materials.length > 0 && (
           <div className="mb-3 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
             {materials.map((material) => (
-              <div key={material.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-                <span className="truncate">
+              <div key={material.id} className="flex items-center justify-between gap-2 px-1 py-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => handleOpenMaterial(material.id)}
+                  disabled={switching}
+                  title="اضغط لبدء الدرس من هذا الكتاب"
+                  className="min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
                   {material.isActive && "✓ "}
                   {material.title}
-                </span>
+                </button>
                 <button
                   onClick={() => handleDelete(material.id)}
-                  className="shrink-0 text-[var(--danger)] hover:underline"
+                  className="shrink-0 px-2 text-[var(--danger)] hover:underline"
                 >
                   حذف
                 </button>
