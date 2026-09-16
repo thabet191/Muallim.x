@@ -154,9 +154,13 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
   // because the automatic kickoff only ever fires once per subject, so
   // switching to a newly uploaded book afterward would otherwise leave the
   // teacher silently waiting on the old material with no visible way to ask
-  // it to move on.
+  // it to move on. If the teacher is still mid-response (e.g. the student
+  // taps a book while the opening greeting is still streaming in), silently
+  // refusing looked exactly like a broken button — interrupt it instead,
+  // the same way the stop button does, and start fresh right away.
   const handleStartLesson = () => {
-    if (!selectedSubjectId || isStreaming) return;
+    if (!selectedSubjectId) return;
+    if (isStreaming) stopTeacher();
     setMobileSettingsOpen(false);
     void sendToTeacher(selectedSubjectId);
   };
@@ -204,7 +208,7 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
 
             <button
               onClick={handleStartLesson}
-              disabled={isStreaming || !selectedSubjectId}
+              disabled={!selectedSubjectId}
               title="اطلب من المعلم إعادة بدء الدرس الحالي"
               className="rounded-lg border border-[var(--border)] px-3 py-1.5 transition hover:border-[var(--brand)] disabled:cursor-not-allowed disabled:opacity-50"
             >
