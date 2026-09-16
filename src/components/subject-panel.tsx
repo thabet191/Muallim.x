@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ProgressSummary, StudentMaterialSummary, SubjectSummary } from "@/lib/types";
+import type { StudentMaterialSummary, SubjectSummary } from "@/lib/types";
 
-const DEFAULT_OPTION_VALUE = "__default__";
 // Vercel's Hobby plan hard-caps a request body around 4.5MB; warn before
 // that point so a large real textbook fails with a clear reason instead of
 // a confusing silent-looking error.
@@ -13,22 +12,18 @@ export function SubjectPanel({
   subjects,
   selectedSubjectId,
   onSelectSubject,
-  progress,
   materialsVersion,
   onMaterialChange,
   onCloseMobile,
   onStartLesson,
-  startLessonDisabled,
 }: {
   subjects: SubjectSummary[];
   selectedSubjectId: string | null;
   onSelectSubject: (id: string) => void;
-  progress: ProgressSummary | null;
   materialsVersion: number;
   onMaterialChange: () => void;
   onCloseMobile?: () => void;
   onStartLesson?: () => void;
-  startLessonDisabled?: boolean;
 }) {
   const [materials, setMaterials] = useState<StudentMaterialSummary[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -84,11 +79,15 @@ export function SubjectPanel({
       }
 
       setUploadNote({
-        text: `تمت إضافة "${data.title}" (${data.pageCount ?? "؟"} صفحة) إلى مكتبتك. اضغط على "ابدأ الدرس الآن" أدناه ليبدأ المعلم الشرح منه.`,
+        text: `تمت إضافة "${data.title}" (${data.pageCount ?? "؟"} صفحة) إلى مكتبتك، وسيبدأ المعلم الشرح منها الآن.`,
         isError: false,
       });
       onMaterialChange();
       if (fileInputRef.current) fileInputRef.current.value = "";
+      // The upload just made this the active book (the server activates it
+      // on creation) — start the lesson from it immediately instead of
+      // leaving the student to go find and tap it in the list separately.
+      onStartLesson?.();
     } catch {
       // A dropped connection or a server crash never reaches the response
       // handling above — without this the button would just go back to
@@ -164,83 +163,44 @@ export function SubjectPanel({
             {selectedSubject.description}
           </p>
         )}
-        {onStartLesson && selectedSubjectId && (
-          <button
-            onClick={onStartLesson}
-            disabled={startLessonDisabled}
-            className="mt-3 w-full rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            ▶ ابدأ الدرس الآن
-          </button>
-        )}
       </div>
 
-      {progress && (progress.lastTopic || progress.weakPoints.length > 0) && (
-        <div className="rounded-lg bg-[var(--brand-soft)] p-3 text-xs leading-6">
-          {progress.lastTopic && (
-            <p>
-              <span className="font-medium">آخر موضوع: </span>
-              {progress.lastTopic}
-            </p>
-          )}
-          {progress.weakPoints.length > 0 && (
-            <p>
-              <span className="font-medium">نقاط للمراجعة: </span>
-              {progress.weakPoints.join("، ")}
-            </p>
-          )}
-        </div>
-      )}
-
       <div>
-        <label className="mb-1 block text-sm font-medium">مكتبة كتبك (PDF)</label>
+        <label className="mb-1 block text-sm font-medium">المكتبة</label>
         <p className="mb-2 text-xs text-[var(--foreground)]/60">
-          ارفع كتبًا بصيغة PDF لهذه المادة، واختر أي واحد منها ليكون مصدر شرح المعلم. تُحفظ كتبك تلقائيًا ولا تحتاج لرفعها مرة أخرى.
+          اضغط على كتاب لتبدأ دراسته. الكتب التي ترفعها تُحفظ تلقائيًا ولا تحتاج لرفعها مرة أخرى.
         </p>
 
-        <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">
-          اختر الكتاب الذي تريد دراسته
-        </label>
-        <select
-          value={activeMaterial?.id ?? DEFAULT_OPTION_VALUE}
-          disabled={!selectedSubjectId || switching}
-          onChange={(e) =>
-            handleActivate(e.target.value === DEFAULT_OPTION_VALUE ? null : e.target.value)
-          }
-          className="mb-3 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--brand)] disabled:opacity-60"
-        >
-          <option value={DEFAULT_OPTION_VALUE}>المحتوى الافتراضي للمادة</option>
+        <div className="mb-3 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+          <button
+            type="button"
+            onClick={() => handleOpenMaterial(null)}
+            disabled={!selectedSubjectId || switching}
+            className="min-w-0 truncate px-2 py-1.5 text-start text-xs hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {!activeMaterial && "✓ "}
+            المحتوى الافتراضي للمادة
+          </button>
           {materials.map((material) => (
-            <option key={material.id} value={material.id}>
-              {material.title}
-            </option>
+            <div key={material.id} className="flex items-center justify-between gap-2 px-1 py-1 text-xs">
+              <button
+                type="button"
+                onClick={() => handleOpenMaterial(material.id)}
+                disabled={switching}
+                className="min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {material.isActive && "✓ "}
+                {material.title}
+              </button>
+              <button
+                onClick={() => handleDelete(material.id)}
+                className="shrink-0 px-2 text-[var(--danger)] hover:underline"
+              >
+                حذف
+              </button>
+            </div>
           ))}
-        </select>
-
-        {materials.length > 0 && (
-          <div className="mb-3 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
-            {materials.map((material) => (
-              <div key={material.id} className="flex items-center justify-between gap-2 px-1 py-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => handleOpenMaterial(material.id)}
-                  disabled={switching}
-                  title="اضغط لبدء الدرس من هذا الكتاب"
-                  className="min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {material.isActive && "✓ "}
-                  {material.title}
-                </button>
-                <button
-                  onClick={() => handleDelete(material.id)}
-                  className="shrink-0 px-2 text-[var(--danger)] hover:underline"
-                >
-                  حذف
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        </div>
 
         {/* Native file input kept for real functionality, visually hidden —
             its own "Choose File" button follows OS/browser locale (usually

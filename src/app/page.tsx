@@ -17,7 +17,7 @@ export default async function HomePage() {
 
   return (
     <div className="flex h-screen flex-col">
-      <TopNav userName={session.user.name ?? "طالبنا"} isAdmin={session.user.role === "ADMIN"} />
+      <TopNav userName={session.user.name ?? "طالبنا"} />
       <ChatApp subjects={subjects} />
     </div>
   );

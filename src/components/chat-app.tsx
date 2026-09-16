@@ -169,12 +169,10 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
             subjects={subjects}
             selectedSubjectId={selectedSubjectId}
             onSelectSubject={setSelectedSubjectId}
-            progress={progress}
             materialsVersion={materialsVersion}
             onMaterialChange={() => setMaterialsVersion((v) => v + 1)}
             onCloseMobile={() => setMobileSettingsOpen(false)}
             onStartLesson={handleStartLesson}
-            startLessonDisabled={isStreaming}
           />
         </div>
       )}
@@ -202,6 +200,15 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
               title="تشغيل/إيقاف قراءة الردود صوتيًا"
             >
               {voice.speaking ? "🔊 يتحدث..." : voice.enabled ? "🔊 الصوت مفعّل" : "🔇 الصوت متوقف"}
+            </button>
+
+            <button
+              onClick={handleStartLesson}
+              disabled={isStreaming || !selectedSubjectId}
+              title="اطلب من المعلم إعادة بدء الدرس الحالي"
+              className="rounded-lg border border-[var(--border)] px-3 py-1.5 transition hover:border-[var(--brand)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              🔄 إعادة الدرس
             </button>
 
             {progress?.currentLocation && (
