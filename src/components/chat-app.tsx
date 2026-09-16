@@ -24,6 +24,7 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
   const voice = useTeacherVoice();
   const kickedOffRef = useRef<Set<string>>(new Set());
   const streamAbortRef = useRef<AbortController | null>(null);
+  const callTokenRef = useRef(0);
 
   const loadProgress = useCallback(async (subjectId: string) => {
     const progressData = await fetch(`/api/progress?subjectId=${subjectId}`)
@@ -34,6 +35,12 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
 
   const sendToTeacher = useCallback(
     async (subjectId: string, message?: string) => {
+      // Uniquely identifies this call so its cleanup can tell whether it's
+      // still the "current" one by the time it finishes — needed because
+      // stopTeacher() below resets isStreaming immediately rather than
+      // waiting for this promise to settle, so a slow-to-reject aborted
+      // call must never clobber a newer call's in-progress state.
+      const myToken = ++callTokenRef.current;
       setIsStreaming(true);
       setStreamingText("");
       setError(null);
@@ -62,11 +69,11 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
           const { done, value } = await reader.read();
           if (done) break;
           full += decoder.decode(value, { stream: true });
-          setStreamingText(full);
+          if (myToken === callTokenRef.current) setStreamingText(full);
         }
       } catch (err) {
         const isAbort = err instanceof DOMException && err.name === "AbortError";
-        if (!isAbort) {
+        if (!isAbort && myToken === callTokenRef.current) {
           setError(err instanceof Error ? err.message : "حدث خطأ غير متوقع.");
         }
       } finally {
@@ -78,17 +85,30 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
           voice.speak(full);
         }
         void loadProgress(subjectId);
-        setIsStreaming(false);
-        setStreamingText("");
-        streamAbortRef.current = null;
+        // Only the still-current call gets to touch the shared streaming
+        // UI state — an aborted/superseded call's cleanup must not stomp
+        // on a newer call that's already running.
+        if (myToken === callTokenRef.current) {
+          setIsStreaming(false);
+          setStreamingText("");
+          streamAbortRef.current = null;
+        }
       }
     },
     [loadProgress, voice],
   );
 
   const stopTeacher = useCallback(() => {
+    // Reset the UI immediately rather than waiting for the aborted fetch's
+    // promise to settle — some browsers don't reliably reject a pending
+    // stream read on abort, which otherwise left the stop button stuck
+    // forever after a single click.
+    callTokenRef.current += 1;
     streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
     voice.stop();
+    setIsStreaming(false);
+    setStreamingText("");
   }, [voice]);
 
   useEffect(() => {
