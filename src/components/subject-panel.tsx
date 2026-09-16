@@ -146,18 +146,25 @@ export function SubjectPanel({
 
       <div>
         <label className="mb-1 block text-sm font-medium">المادة الدراسية</label>
-        <select
-          value={selectedSubjectId ?? ""}
-          onChange={(e) => onSelectSubject(e.target.value)}
-          className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
-        >
-          {subjects.length === 0 && <option value="">لا توجد مواد بعد</option>}
+        <div className="flex flex-wrap gap-2">
+          {subjects.length === 0 && (
+            <p className="text-xs text-[var(--foreground)]/60">لا توجد مواد بعد</p>
+          )}
           {subjects.map((subject) => (
-            <option key={subject.id} value={subject.id}>
+            <button
+              key={subject.id}
+              type="button"
+              onClick={() => onSelectSubject(subject.id)}
+              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                subject.id === selectedSubjectId
+                  ? "border-[var(--brand)] bg-[var(--brand-soft)] font-medium text-[var(--brand-dark)]"
+                  : "border-[var(--border)] hover:border-[var(--brand)]"
+              }`}
+            >
               {subject.nameAr}
-            </option>
+            </button>
           ))}
-        </select>
+        </div>
         {selectedSubject?.description && (
           <p className="mt-2 text-xs leading-6 text-[var(--foreground)]/60">
             {selectedSubject.description}
@@ -166,9 +173,12 @@ export function SubjectPanel({
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium">المكتبة</label>
+        <label className="mb-1 block text-sm font-medium">
+          المكتبة{selectedSubject && ` — ${selectedSubject.nameAr}`}
+        </label>
         <p className="mb-2 text-xs text-[var(--foreground)]/60">
-          اضغط على كتاب لتبدأ دراسته. الكتب التي ترفعها تُحفظ تلقائيًا ولا تحتاج لرفعها مرة أخرى.
+          اضغط على كتاب لتبدأ دراسته. الكتب التي ترفعها تُحفظ تلقائيًا ولا تحتاج لرفعها مرة أخرى، وتُضاف
+          دائمًا إلى المادة المختارة أعلاه.
         </p>
 
         <div className="mb-3 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
@@ -222,7 +232,9 @@ export function SubjectPanel({
           disabled={!selectedSubjectId || uploading}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--brand)] px-3 py-2 text-sm font-medium text-[var(--brand)] transition hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {uploading ? "جارٍ رفع الملف واستخراج النص..." : "+ ارفع كتابًا جديدًا (PDF)"}
+          {uploading
+            ? "جارٍ رفع الملف واستخراج النص..."
+            : `+ ارفع كتابًا لمادة ${selectedSubject?.nameAr ?? ""} (PDF)`}
         </button>
 
         {uploadNote && (
