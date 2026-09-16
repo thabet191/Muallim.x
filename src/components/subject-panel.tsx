@@ -16,6 +16,7 @@ export function SubjectPanel({
   progress,
   materialsVersion,
   onMaterialChange,
+  onCloseMobile,
 }: {
   subjects: SubjectSummary[];
   selectedSubjectId: string | null;
@@ -23,6 +24,7 @@ export function SubjectPanel({
   progress: ProgressSummary | null;
   materialsVersion: number;
   onMaterialChange: () => void;
+  onCloseMobile?: () => void;
 }) {
   const [materials, setMaterials] = useState<StudentMaterialSummary[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -104,6 +106,15 @@ export function SubjectPanel({
 
   return (
     <aside className="flex w-full flex-col gap-5 overflow-y-auto border-l border-[var(--border)] bg-[var(--surface)] p-4 sm:w-80">
+      {onCloseMobile && (
+        <button
+          onClick={onCloseMobile}
+          className="flex items-center gap-1 self-start rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm sm:hidden"
+        >
+          ✕ رجوع للمحادثة
+        </button>
+      )}
+
       <div>
         <label className="mb-1 block text-sm font-medium">المادة الدراسية</label>
         <select
@@ -125,14 +136,8 @@ export function SubjectPanel({
         )}
       </div>
 
-      {progress && (progress.lastTopic || progress.currentLocation || progress.weakPoints.length > 0) && (
+      {progress && (progress.lastTopic || progress.weakPoints.length > 0) && (
         <div className="rounded-lg bg-[var(--brand-soft)] p-3 text-xs leading-6">
-          {progress.currentLocation && (
-            <p>
-              <span className="font-medium">موقعك في الكتاب: </span>
-              {progress.currentLocation}
-            </p>
-          )}
           {progress.lastTopic && (
             <p>
               <span className="font-medium">آخر موضوع: </span>

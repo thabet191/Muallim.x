@@ -39,6 +39,8 @@ export function AdminPanel({
   const [newSubject, setNewSubject] = useState({ key: "", nameAr: "", nameEn: "", description: "" });
   const [subjectError, setSubjectError] = useState<string | null>(null);
   const [creatingSubject, setCreatingSubject] = useState(false);
+  const [showAddSubject, setShowAddSubject] = useState(false);
+  const [showStudents, setShowStudents] = useState(false);
 
   const [uploadSubjectId, setUploadSubjectId] = useState(subjects[0]?.id ?? "");
   const [uploading, setUploading] = useState(false);
@@ -64,6 +66,7 @@ export function AdminPanel({
     }
 
     setNewSubject({ key: "", nameAr: "", nameEn: "", description: "" });
+    setShowAddSubject(false);
     router.refresh();
   };
 
@@ -106,53 +109,10 @@ export function AdminPanel({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 overflow-y-auto px-4 py-8">
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 overflow-y-auto px-4 py-8">
       <h1 className="text-xl font-bold text-[var(--brand-dark)]">لوحة تحكم المعلم/المطور</h1>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h2 className="mb-3 font-semibold">إضافة مادة جديدة</h2>
-        <form onSubmit={handleCreateSubject} className="grid gap-3 sm:grid-cols-2">
-          <input
-            placeholder="معرّف فريد (بالإنكليزية، مثل physics)"
-            value={newSubject.key}
-            onChange={(e) => setNewSubject((s) => ({ ...s, key: e.target.value }))}
-            required
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          />
-          <input
-            placeholder="الاسم بالعربية"
-            value={newSubject.nameAr}
-            onChange={(e) => setNewSubject((s) => ({ ...s, nameAr: e.target.value }))}
-            required
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          />
-          <input
-            placeholder="الاسم بالإنكليزية"
-            value={newSubject.nameEn}
-            onChange={(e) => setNewSubject((s) => ({ ...s, nameEn: e.target.value }))}
-            required
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          />
-          <input
-            placeholder="وصف مختصر (اختياري)"
-            value={newSubject.description}
-            onChange={(e) => setNewSubject((s) => ({ ...s, description: e.target.value }))}
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          />
-          {subjectError && <p className="sm:col-span-2 text-sm text-[var(--danger)]">{subjectError}</p>}
-          <button
-            type="submit"
-            disabled={creatingSubject}
-            className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-dark)] disabled:opacity-60 sm:col-span-2"
-          >
-            {creatingSubject ? "جارٍ الإضافة..." : "إضافة المادة"}
-          </button>
-        </form>
-      </section>
-
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h2 className="mb-3 font-semibold">مكتبة المواد (المصدر الدائم الذي يراه كل الطلاب)</h2>
-
         <label className="mb-1 block text-sm font-medium">المادة</label>
         <select
           value={uploadSubjectId}
@@ -221,20 +181,77 @@ export function AdminPanel({
         )}
       </section>
 
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h2 className="mb-3 font-semibold">الطلاب المسجّلون ({students.length})</h2>
-        <div className="flex flex-col divide-y divide-[var(--border)] text-sm">
-          {students.length === 0 && (
-            <p className="py-3 text-[var(--foreground)]/60">لا يوجد طلاب مسجّلون بعد.</p>
-          )}
-          {students.map((student) => (
-            <div key={student.id} className="flex items-center justify-between py-2">
-              <span>{student.name}</span>
-              <span className="text-xs text-[var(--foreground)]/60">{student.email}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <button
+        onClick={() => setShowAddSubject((v) => !v)}
+        className="self-start text-sm text-[var(--brand)] hover:underline"
+      >
+        {showAddSubject ? "− إخفاء" : "+ إضافة مادة جديدة إلى القائمة"}
+      </button>
+
+      {showAddSubject && (
+        <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <form onSubmit={handleCreateSubject} className="grid gap-3 sm:grid-cols-2">
+            <input
+              placeholder="معرّف فريد (بالإنكليزية، مثل physics)"
+              value={newSubject.key}
+              onChange={(e) => setNewSubject((s) => ({ ...s, key: e.target.value }))}
+              required
+              className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+            />
+            <input
+              placeholder="الاسم بالعربية"
+              value={newSubject.nameAr}
+              onChange={(e) => setNewSubject((s) => ({ ...s, nameAr: e.target.value }))}
+              required
+              className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+            />
+            <input
+              placeholder="الاسم بالإنكليزية"
+              value={newSubject.nameEn}
+              onChange={(e) => setNewSubject((s) => ({ ...s, nameEn: e.target.value }))}
+              required
+              className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+            />
+            <input
+              placeholder="وصف مختصر (اختياري)"
+              value={newSubject.description}
+              onChange={(e) => setNewSubject((s) => ({ ...s, description: e.target.value }))}
+              className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+            />
+            {subjectError && <p className="sm:col-span-2 text-sm text-[var(--danger)]">{subjectError}</p>}
+            <button
+              type="submit"
+              disabled={creatingSubject}
+              className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-dark)] disabled:opacity-60 sm:col-span-2"
+            >
+              {creatingSubject ? "جارٍ الإضافة..." : "إضافة المادة"}
+            </button>
+          </form>
+        </section>
+      )}
+
+      <button
+        onClick={() => setShowStudents((v) => !v)}
+        className="self-start text-sm text-[var(--brand)] hover:underline"
+      >
+        {showStudents ? "− إخفاء" : `👥 الطلاب المسجّلون (${students.length})`}
+      </button>
+
+      {showStudents && (
+        <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <div className="flex flex-col divide-y divide-[var(--border)] text-sm">
+            {students.length === 0 && (
+              <p className="py-3 text-[var(--foreground)]/60">لا يوجد طلاب مسجّلون بعد.</p>
+            )}
+            {students.map((student) => (
+              <div key={student.id} className="flex items-center justify-between py-2">
+                <span>{student.name}</span>
+                <span className="text-xs text-[var(--foreground)]/60">{student.email}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

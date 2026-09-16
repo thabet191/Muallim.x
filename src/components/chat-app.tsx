@@ -20,6 +20,11 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [materialsVersion, setMaterialsVersion] = useState(0);
+  // On narrow screens the settings panel and the chat can't both fit on
+  // screen at once (the panel's natural content height used to push the
+  // composer/buttons off the bottom entirely) — so on mobile exactly one of
+  // them shows at a time; on sm+ screens both are always visible regardless.
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   const voice = useTeacherVoice();
   const kickedOffRef = useRef<Set<string>>(new Set());
@@ -148,19 +153,32 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden sm:flex-row-reverse">
       {!fullscreen && (
-        <SubjectPanel
-          subjects={subjects}
-          selectedSubjectId={selectedSubjectId}
-          onSelectSubject={setSelectedSubjectId}
-          progress={progress}
-          materialsVersion={materialsVersion}
-          onMaterialChange={() => setMaterialsVersion((v) => v + 1)}
-        />
+        <div className={`${mobileSettingsOpen ? "flex" : "hidden"} sm:flex`}>
+          <SubjectPanel
+            subjects={subjects}
+            selectedSubjectId={selectedSubjectId}
+            onSelectSubject={setSelectedSubjectId}
+            progress={progress}
+            materialsVersion={materialsVersion}
+            onMaterialChange={() => setMaterialsVersion((v) => v + 1)}
+            onCloseMobile={() => setMobileSettingsOpen(false)}
+          />
+        </div>
       )}
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div
+        className={`flex-1 flex-col overflow-hidden ${mobileSettingsOpen ? "hidden sm:flex" : "flex"}`}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
           <div className="flex items-center gap-2 text-sm">
+            {!fullscreen && (
+              <button
+                onClick={() => setMobileSettingsOpen(true)}
+                className="rounded-lg border border-[var(--border)] px-3 py-1.5 transition hover:border-[var(--brand)] sm:hidden"
+              >
+                ⚙ المادة والمكتبة
+              </button>
+            )}
             <button
               onClick={voice.toggleEnabled}
               className={`rounded-lg border px-3 py-1.5 transition ${
