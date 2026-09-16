@@ -60,7 +60,7 @@ export function cleanTextForSpeech(content: string): string {
     .replace(SVG_FENCE_RE, " ")
     .replace(/```[\s\S]*?```/g, " ")
     .replace(EMOJI_RE, "")
-    .replace(/[*_#>`~]/g, "")
+    .replace(/[*_#>`~$]/g, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/\r/g, "")
     .split("\n")

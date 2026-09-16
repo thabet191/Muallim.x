@@ -4,9 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SubjectPanel } from "@/components/subject-panel";
 import { ChatThread } from "@/components/chat-thread";
 import { ChatComposer } from "@/components/chat-composer";
-import { LessonVisualPanel } from "@/components/lesson-visual-panel";
 import { useTeacherVoice } from "@/hooks/use-teacher-voice";
-import { findLastSvg } from "@/lib/message-content";
 import type { ChatMessage, ProgressSummary, SubjectSummary } from "@/lib/types";
 
 export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
@@ -234,15 +232,6 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
           <p className="bg-[var(--danger)]/10 px-4 py-2 text-center text-xs text-[var(--danger)]">
             {error}
           </p>
-        )}
-
-        {selectedSubjectId && (
-          <LessonVisualPanel
-            subjectId={selectedSubjectId}
-            currentPage={progress?.currentPage ?? null}
-            lastSvg={findLastSvg(messages)}
-            materialsVersion={materialsVersion}
-          />
         )}
 
         <ChatThread messages={messages} streamingText={streamingText} isStreaming={isStreaming} />
