@@ -17,6 +17,8 @@ export function SubjectPanel({
   materialsVersion,
   onMaterialChange,
   onCloseMobile,
+  onStartLesson,
+  startLessonDisabled,
 }: {
   subjects: SubjectSummary[];
   selectedSubjectId: string | null;
@@ -25,6 +27,8 @@ export function SubjectPanel({
   materialsVersion: number;
   onMaterialChange: () => void;
   onCloseMobile?: () => void;
+  onStartLesson?: () => void;
+  startLessonDisabled?: boolean;
 }) {
   const [materials, setMaterials] = useState<StudentMaterialSummary[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -66,37 +70,54 @@ export function SubjectPanel({
 
     setUploading(true);
 
-    const formData = new FormData();
-    formData.append("subjectId", selectedSubjectId);
-    formData.append("file", file);
+    try {
+      const formData = new FormData();
+      formData.append("subjectId", selectedSubjectId);
+      formData.append("file", file);
 
-    const response = await fetch("/api/materials/student", { method: "POST", body: formData });
-    const data = await response.json().catch(() => null);
+      const response = await fetch("/api/materials/student", { method: "POST", body: formData });
+      const data = await response.json().catch(() => null);
 
-    setUploading(false);
-    if (!response.ok) {
-      setUploadNote({ text: data?.error ?? "تعذّر رفع الملف، حاول مجددًا.", isError: true });
-      return;
+      if (!response.ok) {
+        setUploadNote({ text: data?.error ?? "تعذّر رفع الملف، حاول مجددًا.", isError: true });
+        return;
+      }
+
+      setUploadNote({
+        text: `تمت إضافة "${data.title}" (${data.pageCount ?? "؟"} صفحة) إلى مكتبتك. اضغط على "ابدأ الدرس الآن" أدناه ليبدأ المعلم الشرح منه.`,
+        isError: false,
+      });
+      onMaterialChange();
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch {
+      // A dropped connection or a server crash never reaches the response
+      // handling above — without this the button would just go back to
+      // normal with no feedback at all, and the student can't tell whether
+      // the upload actually happened.
+      setUploadNote({
+        text: "انقطع الاتصال أثناء رفع الملف ولم يكتمل الرفع. تأكد من اتصالك بالإنترنت وحاول مجددًا.",
+        isError: true,
+      });
+    } finally {
+      setUploading(false);
     }
-
-    setUploadNote({
-      text: `تمت إضافة "${data.title}" (${data.pageCount ?? "؟"} صفحة) إلى مكتبتك.`,
-      isError: false,
-    });
-    onMaterialChange();
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleActivate = async (id: string | null) => {
     if (!selectedSubjectId) return;
     setSwitching(true);
-    await fetch("/api/materials/student", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subjectId: selectedSubjectId, id }),
-    });
-    setSwitching(false);
-    onMaterialChange();
+    try {
+      await fetch("/api/materials/student", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subjectId: selectedSubjectId, id }),
+      });
+      onMaterialChange();
+    } catch {
+      setUploadNote({ text: "تعذّر تفعيل الكتاب، تحقق من اتصالك وحاول مجددًا.", isError: true });
+    } finally {
+      setSwitching(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -133,6 +154,15 @@ export function SubjectPanel({
           <p className="mt-2 text-xs leading-6 text-[var(--foreground)]/60">
             {selectedSubject.description}
           </p>
+        )}
+        {onStartLesson && selectedSubjectId && (
+          <button
+            onClick={onStartLesson}
+            disabled={startLessonDisabled}
+            className="mt-3 w-full rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            ▶ ابدأ الدرس الآن
+          </button>
         )}
       </div>
 

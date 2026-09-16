@@ -150,6 +150,17 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
     void sendToTeacher(selectedSubjectId, message);
   };
 
+  // Lets the student explicitly (re)prompt the teacher to start — needed
+  // because the automatic kickoff only ever fires once per subject, so
+  // switching to a newly uploaded book afterward would otherwise leave the
+  // teacher silently waiting on the old material with no visible way to ask
+  // it to move on.
+  const handleStartLesson = () => {
+    if (!selectedSubjectId || isStreaming) return;
+    setMobileSettingsOpen(false);
+    void sendToTeacher(selectedSubjectId);
+  };
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden sm:flex-row-reverse">
       {!fullscreen && (
@@ -162,6 +173,8 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
             materialsVersion={materialsVersion}
             onMaterialChange={() => setMaterialsVersion((v) => v + 1)}
             onCloseMobile={() => setMobileSettingsOpen(false)}
+            onStartLesson={handleStartLesson}
+            startLessonDisabled={isStreaming}
           />
         </div>
       )}

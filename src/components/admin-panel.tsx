@@ -85,22 +85,34 @@ export function AdminPanel({
 
     setUploading(true);
 
-    const formData = new FormData();
-    formData.append("subjectId", uploadSubjectId);
-    formData.append("file", file);
+    try {
+      const formData = new FormData();
+      formData.append("subjectId", uploadSubjectId);
+      formData.append("file", file);
 
-    const response = await fetch("/api/materials/admin", { method: "POST", body: formData });
-    const data = await response.json().catch(() => null);
+      const response = await fetch("/api/materials/admin", { method: "POST", body: formData });
+      const data = await response.json().catch(() => null);
 
-    setUploading(false);
-    if (!response.ok) {
-      setUploadNote({ text: data?.error ?? "تعذّر رفع الملف.", isError: true });
-      return;
+      if (!response.ok) {
+        setUploadNote({ text: data?.error ?? "تعذّر رفع الملف.", isError: true });
+        return;
+      }
+
+      setUploadNote({ text: `تمت إضافة "${data.title}" إلى مكتبة هذه المادة.`, isError: false });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      router.refresh();
+    } catch {
+      // A dropped connection or a server crash never reaches the response
+      // handling above — without this the button would just go back to
+      // normal with no feedback at all, and it looks like the upload
+      // silently vanished.
+      setUploadNote({
+        text: "انقطع الاتصال أثناء رفع الملف ولم يكتمل الرفع. تأكد من اتصالك بالإنترنت وحاول مجددًا.",
+        isError: true,
+      });
+    } finally {
+      setUploading(false);
     }
-
-    setUploadNote({ text: `تمت إضافة "${data.title}" إلى مكتبة هذه المادة.`, isError: false });
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    router.refresh();
   };
 
   const handleDeleteMaterial = async (id: string) => {
