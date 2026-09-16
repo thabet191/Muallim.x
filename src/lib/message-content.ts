@@ -4,6 +4,37 @@ export type MessagePart =
 
 const SVG_FENCE_RE = /```svg\s*([\s\S]*?)```/g;
 
+/**
+ * Rewrites common LaTeX math notation into plain text that both displays
+ * sensibly (no literal backslashes/braces) and reads naturally out loud.
+ * The teacher is told never to use LaTeX, but that's a prompt instruction,
+ * not a guarantee — this is the deterministic backstop for whenever it
+ * slips through anyway, since a raw "$$\frac{72}{8}...$$" is unreadable
+ * on screen and gets spoken character-by-character by TTS.
+ */
+export function convertLatexMath(text: string): string {
+  return text
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_, inner: string) => inner)
+    .replace(/\$([^$\n]+?)\$/g, (_, inner: string) => inner)
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1)/($2)")
+    .replace(/\\sqrt\{([^{}]+)\}/g, "√($1)")
+    .replace(/\\sqrt(\d+)/g, "√$1")
+    .replace(/\\left|\\right/g, "")
+    .replace(/\\times|\\cdot/g, "×")
+    .replace(/\\div/g, "÷")
+    .replace(/\\pm/g, "±")
+    .replace(/\\leq/g, "≤")
+    .replace(/\\geq/g, "≥")
+    .replace(/\\neq/g, "≠")
+    .replace(/\\approx/g, "≈")
+    .replace(/\\infty/g, "∞")
+    .replace(/\\pi/g, "π")
+    .replace(/\\rightarrow|\\to/g, "→")
+    .replace(/\^\{([^{}]+)\}/g, "^$1")
+    .replace(/_\{([^{}]+)\}/g, "_$1")
+    .replace(/\\([a-zA-Z]+)/g, "$1");
+}
+
 /** Splits an assistant message into plain-text and ```svg fenced blocks. */
 export function parseMessageParts(content: string): MessagePart[] {
   const parts: MessagePart[] = [];
@@ -13,14 +44,14 @@ export function parseMessageParts(content: string): MessagePart[] {
   SVG_FENCE_RE.lastIndex = 0;
   while ((match = SVG_FENCE_RE.exec(content)) !== null) {
     if (match.index > lastIndex) {
-      parts.push({ type: "text", value: content.slice(lastIndex, match.index) });
+      parts.push({ type: "text", value: convertLatexMath(content.slice(lastIndex, match.index)) });
     }
     parts.push({ type: "svg", value: match[1] });
     lastIndex = SVG_FENCE_RE.lastIndex;
   }
 
   if (lastIndex < content.length) {
-    parts.push({ type: "text", value: content.slice(lastIndex) });
+    parts.push({ type: "text", value: convertLatexMath(content.slice(lastIndex)) });
   }
 
   return parts;
@@ -56,7 +87,7 @@ const HORIZONTAL_RULE_RE = /^\s*([-_*])\1{2,}\s*$/;
  * speechSynthesis.
  */
 export function cleanTextForSpeech(content: string): string {
-  return content
+  return convertLatexMath(content)
     .replace(SVG_FENCE_RE, " ")
     .replace(/```[\s\S]*?```/g, " ")
     .replace(EMOJI_RE, "")
