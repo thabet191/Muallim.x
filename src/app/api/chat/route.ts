@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
   const progress: ProgressState = {
     lastTopic: progressRow?.lastTopic ?? null,
     currentLocation: progressRow?.currentLocation ?? null,
+    currentPage: progressRow?.currentPage ?? null,
     weakPoints: progressRow?.weakPoints ? JSON.parse(progressRow.weakPoints) : [],
     lessonStatus: progressRow?.lessonStatus ? JSON.parse(progressRow.lessonStatus) : {},
   };
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest) {
           const input = toolUse.input as {
             lastTopic?: string;
             currentLocation?: string;
+            currentPage?: number;
             weakPoints?: string[];
             lessonStatus?: Record<string, string>;
           };
@@ -172,12 +174,14 @@ export async function POST(request: NextRequest) {
               subjectId,
               lastTopic: input.lastTopic ?? null,
               currentLocation: input.currentLocation ?? null,
+              currentPage: input.currentPage ?? null,
               weakPoints: JSON.stringify(input.weakPoints ?? []),
               lessonStatus: JSON.stringify(input.lessonStatus ?? {}),
             },
             update: {
               lastTopic: input.lastTopic ?? progress.lastTopic,
               currentLocation: input.currentLocation ?? progress.currentLocation,
+              currentPage: input.currentPage ?? progress.currentPage,
               weakPoints: JSON.stringify(input.weakPoints ?? progress.weakPoints),
               lessonStatus: JSON.stringify(input.lessonStatus ?? progress.lessonStatus),
             },

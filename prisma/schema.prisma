@@ -56,6 +56,7 @@ model Material {
   title        String
   fileName     String?
   sourceText   String
+  fileData     Bytes? // original PDF bytes, so a real page image can be rendered client-side
   pageCount    Int?
   uploadedById String?
   createdAt    DateTime @default(now())
@@ -78,6 +79,7 @@ model StudentMaterial {
   title      String
   fileName   String?
   sourceText String
+  fileData   Bytes? // original PDF bytes, so a real page image can be rendered client-side
   pageCount  Int?
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
@@ -96,6 +98,7 @@ model Progress {
   subject         Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   lastTopic       String?
   currentLocation String? // human-readable spot in the book, e.g. "الفصل السادس - صفحة 42"
+  currentPage     Int? // real PDF page number (from the "[صفحة N]" markers), used to render the actual page image
   weakPoints      String? // JSON string array
   lessonStatus    String? // JSON object: { [lessonTitle]: "in_progress" | "completed" }
   updatedAt       DateTime @updatedAt

@@ -26,6 +26,17 @@ export function parseMessageParts(content: string): MessagePart[] {
   return parts;
 }
 
+/** Finds the most recent SVG diagram across a list of messages, if any. */
+export function findLastSvg(messages: { role: string; content: string }[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role !== "assistant") continue;
+    const svgPart = parseMessageParts(message.content).find((part) => part.type === "svg");
+    if (svgPart) return svgPart.value;
+  }
+  return null;
+}
+
 // Matches emoji and the invisible modifiers that ride along with them
 // (variation selector, zero-width joiner, skin-tone modifiers, keycap
 // combiner) so speechSynthesis doesn't read out e.g. "raised eyebrow" for

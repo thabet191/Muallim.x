@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   return Response.json({
     lastTopic: progress?.lastTopic ?? null,
     currentLocation: progress?.currentLocation ?? null,
+    currentPage: progress?.currentPage ?? null,
     weakPoints: progress?.weakPoints ? JSON.parse(progress.weakPoints) : [],
     lessonStatus: progress?.lessonStatus ? JSON.parse(progress.lessonStatus) : {},
   });

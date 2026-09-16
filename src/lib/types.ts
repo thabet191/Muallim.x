@@ -15,6 +15,7 @@ export type ChatMessage = {
 export type ProgressSummary = {
   lastTopic: string | null;
   currentLocation: string | null;
+  currentPage: number | null;
   weakPoints: string[];
   lessonStatus: Record<string, string>;
 };

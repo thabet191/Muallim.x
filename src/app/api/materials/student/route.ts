@@ -92,6 +92,7 @@ export async function POST(request: Request) {
         title: file.name,
         fileName: file.name,
         sourceText: extracted.text,
+        fileData: buffer,
         pageCount: extracted.pageCount,
         isActive: true,
       },

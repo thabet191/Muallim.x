@@ -88,6 +88,7 @@ export async function POST(request: Request) {
       title: typeof title === "string" && title.trim() ? title.trim() : file.name,
       fileName: file.name,
       sourceText: extracted.text,
+      fileData: buffer,
       pageCount: extracted.pageCount,
       uploadedById: session.user.id,
     },
