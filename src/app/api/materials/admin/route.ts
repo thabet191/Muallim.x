@@ -103,6 +103,48 @@ export async function POST(request: Request) {
   });
 }
 
+/**
+ * Copies an admin-library material into the calling admin's own personal
+ * (student) library, so they can study/select it from the main teaching
+ * page without re-uploading the file — the admin panel itself has no way
+ * to pick a book to study from, only to manage the subject's shared
+ * default.
+ */
+export async function PATCH(request: Request) {
+  const session = await requireAdmin();
+  if (!session) return errorResponse("غير مصرّح لك بذلك.", 403);
+
+  const body = await request.json().catch(() => null);
+  const id = typeof body?.id === "string" ? body.id : null;
+  if (!id) return errorResponse("id مطلوب.", 400);
+
+  const material = await prisma.material.findUnique({ where: { id } });
+  if (!material) return errorResponse("الملف غير موجود.", 404);
+
+  const userId = session.user.id;
+
+  const studentMaterial = await prisma.$transaction(async (tx) => {
+    await tx.studentMaterial.updateMany({
+      where: { userId, subjectId: material.subjectId },
+      data: { isActive: false },
+    });
+    return tx.studentMaterial.create({
+      data: {
+        userId,
+        subjectId: material.subjectId,
+        title: material.title,
+        fileName: material.fileName,
+        sourceText: material.sourceText,
+        fileData: material.fileData,
+        pageCount: material.pageCount,
+        isActive: true,
+      },
+    });
+  });
+
+  return Response.json({ ok: true, id: studentMaterial.id, title: studentMaterial.title });
+}
+
 export async function DELETE(request: Request) {
   const session = await requireAdmin();
   if (!session) return errorResponse("غير مصرّح لك بذلك.", 403);

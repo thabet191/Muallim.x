@@ -120,9 +120,33 @@ export function AdminPanel({
     router.refresh();
   };
 
+  const handleAddToMyLibrary = async (id: string) => {
+    setUploadNote(null);
+    const response = await fetch("/api/materials/admin", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }).catch(() => null);
+    const data = await response?.json().catch(() => null);
+
+    if (!response?.ok) {
+      setUploadNote({ text: data?.error ?? "تعذّرت إضافة الكتاب إلى مكتبتك.", isError: true });
+      return;
+    }
+    setUploadNote({
+      text: `تمت إضافة "${data.title}" إلى مكتبتك الشخصية. اذهب إلى صفحة المعلم الرئيسية واضغط عليه هناك لبدء الدرس.`,
+      isError: false,
+    });
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 overflow-y-auto px-4 py-8">
       <h1 className="text-xl font-bold text-[var(--brand-dark)]">لوحة تحكم المعلم/المطور</h1>
+      <p className="-mt-3 text-xs leading-6 text-[var(--foreground)]/60">
+        هذه الصفحة فقط لإدارة الكتب المشتركة لكل الطلاب. لدراسة كتاب والبدء بالشرح منه، اذهب إلى
+        صفحة المعلم الرئيسية ثم &quot;⚙ المادة والمكتبة&quot; — أو اضغط &quot;أضف إلى مكتبتي&quot;
+        بجانب أي كتاب أدناه ليصبح متاحًا هناك مباشرة.
+      </p>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
         <label className="mb-1 block text-sm font-medium">المادة</label>
@@ -149,12 +173,20 @@ export function AdminPanel({
             .map((material) => (
               <div key={material.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                 <span className="truncate">{material.title}</span>
-                <button
-                  onClick={() => handleDeleteMaterial(material.id)}
-                  className="shrink-0 text-xs text-[var(--danger)] hover:underline"
-                >
-                  حذف
-                </button>
+                <div className="flex shrink-0 items-center gap-3">
+                  <button
+                    onClick={() => handleAddToMyLibrary(material.id)}
+                    className="text-xs text-[var(--brand)] hover:underline"
+                  >
+                    + أضف إلى مكتبتي
+                  </button>
+                  <button
+                    onClick={() => handleDeleteMaterial(material.id)}
+                    className="text-xs text-[var(--danger)] hover:underline"
+                  >
+                    حذف
+                  </button>
+                </div>
               </div>
             ))}
         </div>
