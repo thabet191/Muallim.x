@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import type Anthropic from "@anthropic-ai/sdk";
+import { APIError } from "@anthropic-ai/sdk";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { anthropic, TEACHER_MODEL } from "@/lib/anthropic";
@@ -16,6 +17,34 @@ const MAX_MESSAGE_LENGTH = 4_000;
 
 const KICKOFF_INSTRUCTION =
   "[بداية الجلسة - تعليمة نظام لا تُعرض للطالب] افتح الجلسة الآن بنفسك: رحّب بالطالب باسمه، وإن كان قد درس معك من قبل ذكّره بلطف بآخر موضوع توقفتما عنده قبل أن تكمل، ثم اطرح سؤالك التشخيصي المعتاد عن المفهوم السابق قبل أي شرح جديد.";
+
+/**
+ * A student seeing only "an error occurred" has no way to tell us what's
+ * actually wrong, and we have no easy access to their Vercel logs — so
+ * turn the Anthropic SDK's error into a specific, actionable Arabic
+ * message instead of a generic one. Server logs still get the full error
+ * via console.error for a deeper look when needed.
+ */
+function describeAnthropicError(error: unknown): string {
+  if (error instanceof APIError) {
+    switch (error.status) {
+      case 401:
+        return "تعذّر الاتصال بالمعلم: مفتاح Anthropic API غير صحيح أو منتهي الصلاحية. تحقق من متغير ANTHROPIC_API_KEY في إعدادات Vercel (Environment Variables) وأعد النشر بعد التعديل.";
+      case 403:
+        return "تعذّر الاتصال بالمعلم: حساب Anthropic API لا يملك صلاحية استخدام هذا النموذج. تحقق من حسابك على console.anthropic.com.";
+      case 429:
+        return "تعذّر الاتصال بالمعلم: تم تجاوز الحد المسموح من الطلبات على حساب Anthropic API، أو نفد الرصيد المتوفر فيه. تحقق من الرصيد على console.anthropic.com أو انتظر قليلًا ثم حاول مجددًا.";
+      case 400:
+      case 404:
+        return "تعذّر الاتصال بالمعلم: اسم النموذج (ANTHROPIC_MODEL) في إعدادات Vercel غير صحيح أو غير متاح لحسابك.";
+      case 529:
+        return "خدمة Anthropic مزدحمة حاليًا وتعذّر الوصول إليها مؤقتًا. حاول مرة أخرى بعد قليل.";
+      default:
+        return `تعذّر الاتصال بخدمة الذكاء الاصطناعي (رمز الخطأ: ${error.status ?? "غير معروف"}). حاول مرة أخرى بعد قليل.`;
+    }
+  }
+  return "عذرًا، حدث خطأ أثناء الاتصال بالمعلم. حاول مرة أخرى بعد قليل.";
+}
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -134,9 +163,7 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error("chat stream error", error);
         if (fullText.length === 0) {
-          controller.enqueue(
-            encoder.encode("عذرًا، حدث خطأ أثناء الاتصال بالمعلم. حاول مرة أخرى بعد قليل."),
-          );
+          controller.enqueue(encoder.encode(describeAnthropicError(error)));
         }
       } finally {
         request.signal.removeEventListener("abort", onClientAbort);
