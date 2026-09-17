@@ -4,6 +4,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cleanTextForSpeech, splitIntoSpeechChunks } from "@/lib/message-content";
 
 const ARABIC_RE = /[؀-ۿ]/;
+const LATIN_LETTER_RE = /[a-zA-Z]/;
+
+/**
+ * A chunk is only really "English" if it has actual English letters and no
+ * Arabic. Everything else — including a chunk that's just digits and math
+ * symbols, like a fraction "(72)/(8)" split out on its own by sentence
+ * chunking — defaults to Arabic. Without this, a numbers-only chunk has no
+ * Arabic characters either, so the old "Arabic present? ar : en" check
+ * picked an English voice for it, making the teacher's voice jump to
+ * English for the math and back to Arabic for the explanation around it.
+ */
+function isEnglish(text: string): boolean {
+  return LATIN_LETTER_RE.test(text) && !ARABIC_RE.test(text);
+}
 
 export function useTeacherVoice() {
   const [enabled, setEnabled] = useState(true);
@@ -24,7 +38,7 @@ export function useTeacherVoice() {
   }, []);
 
   const pickVoice = useCallback((text: string): SpeechSynthesisVoice | undefined => {
-    const targetPrefix = ARABIC_RE.test(text) ? "ar" : "en";
+    const targetPrefix = isEnglish(text) ? "en" : "ar";
     const voices = voicesRef.current;
     return (
       voices.find((v) => v.lang.toLowerCase().startsWith(targetPrefix) && v.localService) ??
@@ -64,7 +78,7 @@ export function useTeacherVoice() {
         const utterance = new SpeechSynthesisUtterance(nextChunk);
         const voice = pickVoice(nextChunk);
         utterance.voice = voice ?? null;
-        utterance.lang = voice?.lang ?? (ARABIC_RE.test(nextChunk) ? "ar-SA" : "en-US");
+        utterance.lang = voice?.lang ?? (isEnglish(nextChunk) ? "en-US" : "ar-SA");
         utterance.rate = 0.9; // slightly slower, clearer for a student
         utterance.pitch = 1;
         utterance.onend = speakNext;
