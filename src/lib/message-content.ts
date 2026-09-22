@@ -68,6 +68,42 @@ export function findLastSvg(messages: { role: string; content: string }[]): stri
   return null;
 }
 
+/**
+ * Android's default TTS engine (and several others) will read a bare math
+ * symbol using its own hardcoded English word ("plus", "equals"...) even
+ * while speaking with an Arabic voice, which is exactly the "switches to
+ * English mid-sentence" behavior students notice. Spelling operators out as
+ * the Arabic words a human teacher would say means the speech engine never
+ * sees a raw symbol to guess a pronunciation for. This only feeds
+ * cleanTextForSpeech — the symbols stay as-is in the text shown on screen.
+ */
+const MATH_SPEECH_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/±/g, " زائد أو ناقص "],
+  [/≤/g, " أصغر من أو يساوي "],
+  [/≥/g, " أكبر من أو يساوي "],
+  [/≠/g, " لا يساوي "],
+  [/≈/g, " تقريبًا يساوي "],
+  [/×/g, " في "],
+  [/÷/g, " على "],
+  [/−/g, " ناقص "], // U+2212 real minus sign only — plain "-" hyphens are left alone
+  [/\+/g, " زائد "],
+  [/=/g, " يساوي "],
+  [/√/g, " الجذر التربيعي لـ "],
+];
+
+function verbalizeMathForSpeech(text: string): string {
+  let result = text
+    .replace(/\^2\b/g, " تربيع ")
+    .replace(/\^3\b/g, " تكعيب ")
+    .replace(/\^(\d+)/g, " أُس $1 ")
+    .replace(/(\d)\s*\/\s*(\d)/g, "$1 على $2"); // spoken fractions: "3/2" -> "3 على 2"
+
+  for (const [pattern, replacement] of MATH_SPEECH_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
 // Matches emoji and the invisible modifiers that ride along with them
 // (variation selector, zero-width joiner, skin-tone modifiers, keycap
 // combiner) so speechSynthesis doesn't read out e.g. "raised eyebrow" for
@@ -87,7 +123,7 @@ const HORIZONTAL_RULE_RE = /^\s*([-_*])\1{2,}\s*$/;
  * speechSynthesis.
  */
 export function cleanTextForSpeech(content: string): string {
-  return convertLatexMath(content)
+  return verbalizeMathForSpeech(convertLatexMath(content))
     .replace(SVG_FENCE_RE, " ")
     .replace(/```[\s\S]*?```/g, " ")
     .replace(EMOJI_RE, "")
