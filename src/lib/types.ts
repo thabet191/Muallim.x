@@ -28,3 +28,9 @@ export type StudentMaterialSummary = {
   isActive: boolean;
   createdAt: string;
 };
+
+export type LessonHint = {
+  title: string;
+  startPage: number;
+  endPage: number;
+};

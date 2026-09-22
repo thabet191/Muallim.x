@@ -5,7 +5,7 @@ import { SubjectPanel } from "@/components/subject-panel";
 import { ChatThread } from "@/components/chat-thread";
 import { ChatComposer } from "@/components/chat-composer";
 import { useTeacherVoice } from "@/hooks/use-teacher-voice";
-import type { ChatMessage, ProgressSummary, SubjectSummary } from "@/lib/types";
+import type { ChatMessage, LessonHint, ProgressSummary, SubjectSummary } from "@/lib/types";
 
 export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(
@@ -37,7 +37,7 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
   }, []);
 
   const sendToTeacher = useCallback(
-    async (subjectId: string, message?: string) => {
+    async (subjectId: string, message?: string, lessonHint?: LessonHint) => {
       // Uniquely identifies this call so its cleanup can tell whether it's
       // still the "current" one by the time it finishes — needed because
       // stopTeacher() below resets isStreaming immediately rather than
@@ -56,7 +56,7 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subjectId, message: message ?? "" }),
+          body: JSON.stringify({ subjectId, message: message ?? "", lessonHint: lessonHint ?? null }),
           signal: controller.signal,
         });
 
@@ -156,11 +156,11 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
   // taps a book while the opening greeting is still streaming in), silently
   // refusing looked exactly like a broken button — interrupt it instead,
   // the same way the stop button does, and start fresh right away.
-  const handleStartLesson = () => {
+  const handleStartLesson = (lessonHint?: LessonHint) => {
     if (!selectedSubjectId) return;
     if (isStreaming) stopTeacher();
     setMobileSettingsOpen(false);
-    void sendToTeacher(selectedSubjectId);
+    void sendToTeacher(selectedSubjectId, undefined, lessonHint);
   };
 
   return (
@@ -205,7 +205,7 @@ export function ChatApp({ subjects }: { subjects: SubjectSummary[] }) {
             </button>
 
             <button
-              onClick={handleStartLesson}
+              onClick={() => handleStartLesson()}
               disabled={!selectedSubjectId}
               title="اطلب من المعلم إعادة بدء الدرس الحالي"
               className="rounded-lg border border-[var(--border)] px-3 py-1.5 transition hover:border-[var(--brand)] disabled:cursor-not-allowed disabled:opacity-50"

@@ -1,12 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { StudentMaterialSummary, SubjectSummary } from "@/lib/types";
+import type { LessonHint, StudentMaterialSummary, SubjectSummary } from "@/lib/types";
 
 // Vercel's Hobby plan hard-caps a request body around 4.5MB; warn before
 // that point so a large real textbook fails with a clear reason instead of
 // a confusing silent-looking error.
 const SIZE_WARNING_BYTES = 4 * 1024 * 1024;
+
+// No AI pass over the PDF — lessons are just fixed-size page chunks, cheap
+// to compute on every render and good enough to give the student a way to
+// jump into a specific part of the book instead of always starting at page 1.
+const LESSON_PAGE_SPAN = 8;
+
+function buildLessons(pageCount: number | null): LessonHint[] {
+  if (!pageCount || pageCount < 1) return [];
+  const lessons: LessonHint[] = [];
+  let start = 1;
+  let index = 1;
+  while (start <= pageCount) {
+    const end = Math.min(start + LESSON_PAGE_SPAN - 1, pageCount);
+    lessons.push({ title: `الدرس ${index} (صفحات ${start}–${end})`, startPage: start, endPage: end });
+    start = end + 1;
+    index += 1;
+  }
+  return lessons;
+}
 
 export function SubjectPanel({
   subjects,
@@ -23,12 +42,13 @@ export function SubjectPanel({
   materialsVersion: number;
   onMaterialChange: () => void;
   onCloseMobile?: () => void;
-  onStartLesson?: () => void;
+  onStartLesson?: (lessonHint?: LessonHint) => void;
 }) {
   const [materials, setMaterials] = useState<StudentMaterialSummary[]>([]);
   const [uploading, setUploading] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [uploadNote, setUploadNote] = useState<{ text: string; isError: boolean } | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedSubject = subjects.find((s) => s.id === selectedSubjectId) ?? null;
@@ -128,6 +148,11 @@ export function SubjectPanel({
     onStartLesson?.();
   };
 
+  const handleSelectLesson = async (materialId: string, lesson: LessonHint) => {
+    await handleActivate(materialId);
+    onStartLesson?.(lesson);
+  };
+
   const handleDelete = async (id: string) => {
     await fetch(`/api/materials/student?id=${id}`, { method: "DELETE" });
     onMaterialChange();
@@ -177,8 +202,8 @@ export function SubjectPanel({
           المكتبة{selectedSubject && ` — ${selectedSubject.nameAr}`}
         </label>
         <p className="mb-2 text-xs text-[var(--foreground)]/60">
-          اضغط على كتاب لتبدأ دراسته. الكتب التي ترفعها تُحفظ تلقائيًا ولا تحتاج لرفعها مرة أخرى، وتُضاف
-          دائمًا إلى المادة المختارة أعلاه.
+          اضغط على عنوان كتاب لفتح خطة دروسه، ثم اختر الدرس لتبدأ فيه مباشرة. الكتب التي ترفعها تُحفظ
+          تلقائيًا ولا تحتاج لرفعها مرة أخرى، وتُضاف دائمًا إلى المادة المختارة أعلاه.
         </p>
 
         <div className="mb-3 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
@@ -191,25 +216,58 @@ export function SubjectPanel({
             {!activeMaterial && "✓ "}
             المحتوى الافتراضي للمادة
           </button>
-          {materials.map((material) => (
-            <div key={material.id} className="flex items-center justify-between gap-2 px-1 py-1 text-xs">
-              <button
-                type="button"
-                onClick={() => handleOpenMaterial(material.id)}
-                disabled={switching}
-                className="min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {material.isActive && "✓ "}
-                {material.title}
-              </button>
-              <button
-                onClick={() => handleDelete(material.id)}
-                className="shrink-0 px-2 text-[var(--danger)] hover:underline"
-              >
-                حذف
-              </button>
-            </div>
-          ))}
+          {materials.map((material) => {
+            const lessons = buildLessons(material.pageCount);
+            const isExpanded = expandedId === material.id;
+            return (
+              <div key={material.id} className="flex flex-col text-xs">
+                <div className="flex items-center justify-between gap-2 px-1 py-1">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : material.id)}
+                    aria-expanded={isExpanded}
+                    className="min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start hover:bg-[var(--brand-soft)]"
+                  >
+                    {isExpanded ? "▾ " : "▸ "}
+                    {material.isActive && "✓ "}
+                    {material.title}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(material.id)}
+                    className="shrink-0 px-2 text-[var(--danger)] hover:underline"
+                  >
+                    حذف
+                  </button>
+                </div>
+                {isExpanded && (
+                  <div className="flex flex-col gap-1 border-t border-[var(--border)] bg-[var(--brand-soft)]/30 px-2 py-2">
+                    {lessons.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMaterial(material.id)}
+                        disabled={switching}
+                        className="min-w-0 truncate rounded-lg px-2 py-1.5 text-start hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        افتح الكتاب كاملاً
+                      </button>
+                    ) : (
+                      lessons.map((lesson) => (
+                        <button
+                          key={lesson.title}
+                          type="button"
+                          onClick={() => handleSelectLesson(material.id, lesson)}
+                          disabled={switching}
+                          className="min-w-0 truncate rounded-lg px-2 py-1.5 text-start hover:bg-[var(--brand-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {lesson.title}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Native file input kept for real functionality, visually hidden —

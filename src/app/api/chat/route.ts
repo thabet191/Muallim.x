@@ -18,6 +18,30 @@ const MAX_MESSAGE_LENGTH = 4_000;
 const KICKOFF_INSTRUCTION =
   "[بداية الجلسة - تعليمة نظام لا تُعرض للطالب] افتح الجلسة الآن بنفسك: رحّب بالطالب باسمه، وإن كان قد درس معك من قبل ذكّره بلطف بآخر موضوع توقفتما عنده قبل أن تكمل، ثم اطرح سؤالك التشخيصي المعتاد عن المفهوم السابق قبل أي شرح جديد.";
 
+type LessonHint = { title: string; startPage: number; endPage: number };
+
+/** Validates the client-computed lesson chunk (title + page range) sent when a student taps a specific lesson in the library. */
+function parseLessonHint(raw: unknown): LessonHint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { title, startPage, endPage } = raw as Record<string, unknown>;
+  if (
+    typeof title !== "string" ||
+    title.length === 0 ||
+    !Number.isInteger(startPage) ||
+    !Number.isInteger(endPage) ||
+    (startPage as number) < 1 ||
+    (endPage as number) < (startPage as number)
+  ) {
+    return null;
+  }
+  return { title: title.slice(0, 200), startPage: startPage as number, endPage: endPage as number };
+}
+
+function buildKickoffInstruction(lessonHint: LessonHint | null): string {
+  if (!lessonHint) return KICKOFF_INSTRUCTION;
+  return `[بداية الجلسة - تعليمة نظام لا تُعرض للطالب] اختار الطالب أن يبدأ تحديدًا بـ "${lessonHint.title}" (صفحات ${lessonHint.startPage}–${lessonHint.endPage} من الكتاب). افتح الجلسة الآن: رحّب بالطالب باسمه، ثم اطرح سؤالك التشخيصي المعتاد عن المفهوم السابق، ثم انتقل لشرح هذا الجزء تحديدًا بدءًا من صفحة ${lessonHint.startPage}.`;
+}
+
 /** Pulls the actual message Anthropic's API sent back, if the SDK captured one. */
 function extractAnthropicMessage(error: APIError): string | null {
   const body = error.error as { error?: { message?: string } } | undefined;
@@ -66,6 +90,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const subjectId = typeof body?.subjectId === "string" ? body.subjectId : null;
   const rawMessage = typeof body?.message === "string" ? body.message.trim() : "";
+  const lessonHint = parseLessonHint(body?.lessonHint);
 
   if (!subjectId) {
     return new Response("subjectId مطلوب.", { status: 400 });
@@ -135,7 +160,7 @@ export async function POST(request: NextRequest) {
     // crashed mid-stream): don't push a second consecutive user message,
     // Anthropic's API requires strict user/assistant alternation.
     if (lastStoredRole !== "user") {
-      anthropicMessages.push({ role: "user", content: KICKOFF_INSTRUCTION });
+      anthropicMessages.push({ role: "user", content: buildKickoffInstruction(lessonHint) });
     }
   } else {
     anthropicMessages.push({ role: "user", content: rawMessage });
